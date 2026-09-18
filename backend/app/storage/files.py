@@ -43,7 +43,7 @@ async def save_upload(file: UploadFile, destination: Path, expected_kind: str) -
     header = b""
     try:
         with destination.open("xb") as target:
-            while chunk := file.file.read(1024 * 1024):
+            while chunk := await file.read(1024 * 1024):
                 size += len(chunk)
                 if size > max_bytes:
                     raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"Tệp vượt quá {settings.max_upload_mb} MB")
@@ -70,6 +70,14 @@ def random_stored_name(extension: str) -> str:
     return f"{uuid4().hex}{extension}"
 
 
+def stored_job_file(job_code: str, stored_path: str) -> Path:
+    job_root = (get_settings().jobs_dir / job_code).resolve()
+    path = Path(stored_path).resolve()
+    if not path.is_relative_to(job_root) or not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tệp không tồn tại")
+    return path
+
+
 def stream_file(path: Path, filename: str, media_type: str = "application/octet-stream", inline: bool = False) -> StreamingResponse:
     async def chunks():
         with path.open("rb") as source:
@@ -79,4 +87,8 @@ def stream_file(path: Path, filename: str, media_type: str = "application/octet-
     safe_name = safe_display_filename(filename)
     disposition_type = "inline" if inline else "attachment"
     disposition = f"{disposition_type}; filename*=UTF-8''{quote(safe_name)}"
-    return StreamingResponse(chunks(), media_type=media_type, headers={"Content-Disposition": disposition})
+    headers = {
+        "Content-Disposition": disposition,
+        "Cache-Control": "private, no-store",
+    }
+    return StreamingResponse(chunks(), media_type=media_type, headers=headers)

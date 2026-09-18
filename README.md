@@ -12,7 +12,9 @@ Cổng web tối giản cho khách hàng gửi PDF hồ sơ BOQ, theo dõi trạ
 
 Frontend chỉ gọi REST API. Nghiệp vụ trạng thái, ownership, file output và điều kiện hoàn thành nằm hoàn toàn ở backend, nên V2/V3 có thể thêm worker mà không đổi giao diện.
 
-## Chạy nhanh trên CachyOS / Arch Linux
+## Development
+
+### Chạy nhanh trên CachyOS / Arch Linux
 
 Cài Docker nếu máy chưa có:
 
@@ -39,7 +41,7 @@ Mở `http://localhost`. Không dùng password mẫu trong môi trường có ng
 
 ## Tài khoản
 
-Lần khởi động đầu tiên backend tạo admin/customer demo từ `ADMIN_*` và `DEMO_*` trong `.env`. Tên đăng nhập là chuỗi không có khoảng trắng, không cần là email. Seed không ghi đè tài khoản đã tồn tại.
+Lần khởi động đầu tiên backend tạo admin từ `ADMIN_*`. Customer demo chỉ được tạo khi `DEMO_PASSWORD` được đặt rõ ràng; để trống thì không seed demo (đây là mặc định production). Tên đăng nhập là chuỗi không có khoảng trắng, không cần là email. Seed không ghi đè tài khoản đã tồn tại.
 
 Tạo customer mới:
 
@@ -70,7 +72,7 @@ Dữ liệu được bind mount ở `./data`, nên `docker compose down` hoặc 
 
 ### Backup và restore
 
-Backup nhất quán nhất khi tạm dừng ghi dữ liệu:
+Script dùng SQLite backup API để snapshot database an toàn cả khi WAL đang bật, sau đó archive snapshot cùng `data/jobs`. Để database và filesystem khớp tuyệt đối trong cùng một thời điểm, vẫn nên tạm dừng ghi dữ liệu:
 
 ```bash
 docker compose stop backend
@@ -92,10 +94,12 @@ docker compose up -d
 - `GET|POST /api/jobs`, `GET /api/jobs/{job_code}`
 - `GET /api/jobs/{job_code}/input/download`
 - `GET /api/jobs/{job_code}/outputs/{output_id}/download`
+- `GET /api/jobs/{job_code}/outputs/{output_id}/view`
 - `GET /api/admin/jobs`, `GET|PATCH /api/admin/jobs/{job_code}`
 - `GET /api/admin/jobs/{job_code}/input/download`
 - `POST /api/admin/jobs/{job_code}/outputs`
 - `DELETE /api/admin/jobs/{job_code}/outputs/{output_id}`
+- `DELETE /api/admin/jobs/{job_code}`
 - `POST /api/admin/jobs/{job_code}/complete`
 
 Swagger có tại `/api/docs` khi `APP_ENV` không phải `production`.
@@ -119,17 +123,80 @@ npm run typecheck
 npm run build
 ```
 
-## Cấu hình production HTTPS
+## Production trên Google Compute Engine
 
-Trên server có domain, đổi dòng `:80` trong `Caddyfile` thành domain thật (ví dụ `boq.example.com`), bỏ khối `auto_https off`, đặt `FRONTEND_URL=https://boq.example.com` và `COOKIE_SECURE=true`. Mở cổng 80/443 trên firewall. Caddy sẽ cấp/chuyển hạn chứng chỉ tự động.
+Mục tiêu được hỗ trợ là một VM Ubuntu 24.04 (ví dụ `e2-medium`) chạy một backend instance bằng Docker Compose. Chuẩn bị VM, trỏ DNS A/AAAA của domain vào external IP tĩnh và mở ingress TCP 80/443. Clone repository, sau đó:
+
+```bash
+cp .env.production.example .env
+openssl rand -hex 32
+```
+
+Đưa secret vừa sinh vào `.env`, đặt mật khẩu admin mạnh (tối thiểu 12 ký tự), email/domain thật và giữ `APP_ENV=production`, `COOKIE_SECURE=true`. Production sẽ fail-fast nếu secret yếu/ngắn, mật khẩu admin yếu/ngắn hoặc cookie không Secure. Không đặt `DEMO_PASSWORD` nếu không chủ ý tạo customer demo.
+
+Development dùng `Caddyfile` mặc định với HTTP localhost. Trên production, đổi site address sang domain và bỏ global option `auto_https off`. Ví dụ tương đương:
+
+```caddy
+boq.example.com {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+
+    @notPdfViewer not path /api/jobs/*/input/view /api/jobs/*/outputs/*/view
+    header @notPdfViewer X-Frame-Options DENY
+
+    @uploads {
+        method POST
+        path /api/jobs /api/admin/jobs/*/outputs
+    }
+    request_body @uploads {
+        max_size 510MB
+    }
+
+    @api path /api/*
+    handle @api {
+        reverse_proxy backend:8000
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
+```
+
+`510MB` chừa multipart overhead cho `MAX_UPLOAD_MB=500`; nếu đổi application limit, cập nhật proxy limit tương ứng. Caddy tự cấp và gia hạn HTTPS. Khởi động và kiểm tra:
+
+```bash
+docker compose config
+docker compose up -d --build
+docker compose ps
+curl -fsS https://boq.example.com/api/health
+```
+
+Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được và `DATA_DIR` tồn tại/có thể ghi. Log của ba service được xoay ở 10 MB × 3 file.
+
+### Dữ liệu và quyền container
+
+`./data:/data` là bind mount chứa cả `database/boq.db` và `jobs/`, nên `docker compose down`/rebuild không xóa dữ liệu. Hãy backup `./data` trước nâng cấp và không xóa thư mục này. Frontend đã chạy non-root; image Caddy chính thức tự quản lý privilege. Backend hiện giữ user mặc định của image để tương thích quyền sở hữu của bind mount `/data` trên các máy V1 hiện hữu. Chuyển thẳng sang UID cố định có thể làm production cũ mất quyền đọc/ghi; nên thực hiện sau khi có migration ownership/entrypoint kiểm soát rõ, không dùng `chmod 777`.
+
+### Cấu hình production HTTPS
+
+Đặt `FRONTEND_URL=https://boq.example.com`; backend chỉ cho phép CORS từ origin này. Không dùng `auto_https off` trong production.
 
 ## Bảo mật đã áp dụng
 
 - Mật khẩu Argon2; JWT hết hạn trong cookie HTTP-only, SameSite Strict và hỗ trợ Secure.
 - Backend kiểm role và ownership; truy vấn job customer luôn ràng buộc `user_id` để chặn IDOR.
-- Mọi download đi qua API authorization và `FileResponse` streaming; không public `/data`.
+- Customer chỉ nhận metadata/download/preview output khi job đang `COMPLETED`; chuyển lại `REVIEW` thu hồi quyền ngay. Admin vẫn xem được output nháp.
+- Mọi download đi qua API authorization và streaming response; không public `/data`.
 - Filename được lấy basename, chuẩn hóa; đường dẫn lưu sinh ngẫu nhiên, không ghép path từ request.
 - Kiểm extension, MIME, magic bytes, file rỗng và giới hạn kích thước trong lúc stream.
+- Upload đọc theo chunk 1 MiB qua API bất đồng bộ của `UploadFile`; transaction SQLite tạo job kết thúc trước khi copy file lớn.
+- SQLite dùng WAL, foreign keys và busy timeout 5 giây; login giới hạn 5 lần thất bại/phút/IP trong memory của single backend.
 - Output chỉ hoàn thành khi đủ Excel và annotated PDF; ghi chú nội bộ tách khỏi ghi chú khách hàng.
 - Không log token, cookie, password hay nội dung PDF; response không lộ hash/path/stack trace.
 

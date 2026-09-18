@@ -20,6 +20,7 @@ os.environ.update(
 )
 
 from app.auth.security import hash_password
+from app.api.auth import login_limiter
 from app.core.database import Base, SessionLocal, engine
 from app.main import app
 from app.models.entities import User, UserRole
@@ -27,6 +28,7 @@ from app.models.entities import User, UserRole
 
 @pytest.fixture(autouse=True)
 def clean_database():
+    login_limiter.reset()
     TEST_DATA.mkdir(parents=True, exist_ok=True)
     Base.metadata.drop_all(engine)
     jobs_dir = TEST_DATA / "jobs"

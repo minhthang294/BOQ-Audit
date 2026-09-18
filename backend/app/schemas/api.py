@@ -41,7 +41,7 @@ class JobResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime
-    outputs: list[OutputResponse] = []
+    outputs: list[OutputResponse] = Field(default_factory=list)
 
 
 class AdminJobResponse(JobResponse):

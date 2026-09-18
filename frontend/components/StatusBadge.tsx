@@ -1,7 +1,7 @@
 import { JobStatus } from "@/types";
 
 export const statusText: Record<JobStatus, string> = {
-  SUBMITTED: "Đã nhận hồ sơ", PROCESSING: "Đang tra soát", WAITING_FOR_INFO: "Cần bổ sung hồ sơ",
+  SUBMITTED: "Đã nhận hồ sơ", PROCESSING: "Đang rà soát", WAITING_FOR_INFO: "Cần bổ sung hồ sơ",
   REVIEW: "Đang kiểm tra kết quả", COMPLETED: "Hoàn thành", FAILED: "Có lỗi xử lý",
 };
 
@@ -12,6 +12,5 @@ const colors: Record<JobStatus, string> = {
 };
 
 export function StatusBadge({ status }: { status: JobStatus }) {
-  return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${colors[status]}`}>{statusText[status]}</span>;
+  return <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold shadow-sm ${colors[status]}`}><span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />{statusText[status]}</span>;
 }
-

@@ -24,6 +24,8 @@ def main():
         username = args.username.strip().lower()
         if len(username) < 3 or any(character.isspace() for character in username):
             raise SystemExit("Username phải có ít nhất 3 ký tự và không chứa khoảng trắng")
+        if len(args.password) < 12:
+            raise SystemExit("Mật khẩu phải có ít nhất 12 ký tự")
         user = db.scalar(select(User).where(func.lower(User.email) == username))
         if args.command == "create-user":
             if user:

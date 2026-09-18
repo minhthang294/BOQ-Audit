@@ -7,10 +7,23 @@
 
     header {
         X-Content-Type-Options nosniff
-        X-Frame-Options SAMEORIGIN
         Referrer-Policy strict-origin-when-cross-origin
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
         -Server
+    }
+
+    # Firefox mở PDF bằng viewer nội bộ và từ chối iframe nếu response có
+    # X-Frame-Options. Chỉ hai endpoint PDF inline được loại trừ; mọi route
+    # còn lại vẫn không được phép nhúng trong trang khác.
+    @notPdfViewer not path /api/jobs/*/input/view /api/jobs/*/outputs/*/view
+    header @notPdfViewer X-Frame-Options DENY
+
+    @uploads {
+        method POST
+        path /api/jobs /api/admin/jobs/*/outputs
+    }
+    request_body @uploads {
+        max_size 510MB
     }
 
     @api path /api/*

@@ -13,7 +13,29 @@ fi
 mkdir -p "${BACKUP_PATH}"
 stamp="$(date +%Y-%m-%d-%H%M%S)"
 archive="${BACKUP_PATH}/boq-backup-${stamp}.tar.gz"
+stage="$(mktemp -d)"
+trap 'rm -rf "${stage}"' EXIT
+mkdir -p "${stage}/data/database" "${stage}/data/jobs"
 
-tar -C "$(dirname "${DATA_PATH}")" -czf "${archive}" "$(basename "${DATA_PATH}")/database" "$(basename "${DATA_PATH}")/jobs"
+database="${DATA_PATH}/database/boq.db"
+if [[ -f "${database}" ]]; then
+  python3 - "${database}" "${stage}/data/database/boq.db" <<'PY'
+import sqlite3
+import sys
+
+source = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+destination = sqlite3.connect(sys.argv[2])
+try:
+    source.backup(destination)
+finally:
+    destination.close()
+    source.close()
+PY
+fi
+
+if [[ -d "${DATA_PATH}/jobs" ]]; then
+  cp -a "${DATA_PATH}/jobs/." "${stage}/data/jobs/"
+fi
+
+tar -C "${stage}" -czf "${archive}" data/database data/jobs
 echo "Đã tạo backup: ${archive}"
-

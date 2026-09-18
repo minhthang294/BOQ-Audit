@@ -1,4 +1,7 @@
 from pathlib import Path
+import logging
+import shutil
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, or_, select
@@ -9,9 +12,10 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.entities import Job, JobOutput, JobStatus, OutputType, User
 from app.schemas.api import AdminJobListResponse, AdminJobResponse, AdminUpdateJob, MessageResponse, OutputResponse
-from app.storage.files import EXCEL_MIMES, PDF_MIMES, random_stored_name, save_upload, stream_file, validate_upload
+from app.storage.files import EXCEL_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 
 router = APIRouter(prefix="/admin/jobs", tags=["admin"])
+logger = logging.getLogger("boq-audit.admin")
 
 
 def find_job(db: Session, job_code: str) -> Job:
@@ -48,9 +52,7 @@ async def get_admin_job(job_code: str, _: User = Depends(admin_user), db: Sessio
 @router.get("/{job_code}/input/download")
 async def download_input(job_code: str, _: User = Depends(admin_user), db: Session = Depends(get_db)):
     job = find_job(db, job_code)
-    path = Path(job.input_file_path)
-    if not path.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tệp hồ sơ không tồn tại")
+    path = stored_job_file(job.job_code, job.input_file_path)
     return stream_file(path, job.original_filename, "application/pdf")
 
 
@@ -117,6 +119,37 @@ async def delete_output(job_code: str, output_id: int, _: User = Depends(admin_u
     db.commit()
     path.unlink(missing_ok=True)
     return {"message": "Đã xóa tệp kết quả"}
+
+
+@router.delete("/{job_code}", response_model=MessageResponse)
+async def delete_job(job_code: str, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
+    job = find_job(db, job_code)
+    jobs_root = get_settings().jobs_dir.resolve()
+    job_directory = (jobs_root / job.job_code).resolve()
+    if job_directory.parent != jobs_root:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Đường dẫn hồ sơ không hợp lệ")
+
+    quarantined_directory = jobs_root / f".deleting-{job.job_code}-{uuid4().hex}"
+    moved = False
+    try:
+        if job_directory.exists():
+            job_directory.rename(quarantined_directory)
+            moved = True
+        db.delete(job)
+        db.commit()
+    except Exception:
+        db.rollback()
+        if moved and quarantined_directory.exists():
+            quarantined_directory.rename(job_directory)
+        raise
+
+    if moved:
+        try:
+            shutil.rmtree(quarantined_directory)
+        except OSError:
+            logger.exception("job_files_cleanup_failed admin_user_id=%s job_code=%s", admin.id, job_code)
+    logger.info("job_deleted admin_user_id=%s job_code=%s", admin.id, job_code)
+    return {"message": "Đã xóa hồ sơ"}
 
 
 @router.post("/{job_code}/complete", response_model=AdminJobResponse)

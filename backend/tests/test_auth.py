@@ -17,6 +17,14 @@ def test_login_wrong_password(client):
     assert "password_hash" not in response.text
 
 
+def test_login_rate_limit_after_failed_attempts(client):
+    for _ in range(5):
+        assert login(client, "owner", "wrong-password").status_code == 401
+    limited = login(client, "owner", "wrong-password")
+    assert limited.status_code == 429
+    assert limited.headers["retry-after"] == "60"
+
+
 def test_unauthenticated_access_rejected(client):
     assert client.get("/api/jobs").status_code == 401
     assert client.get("/api/admin/jobs").status_code == 401

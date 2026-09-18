@@ -2,12 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-body { @apply bg-paper text-ink antialiased; }
-input, textarea, select { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 outline-none transition focus:border-brand focus:ring-2 focus:ring-cyan-100; }
-label { @apply mb-1.5 block text-sm font-semibold text-slate-700; }
-.btn { @apply inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50; }
-.btn-primary { @apply btn bg-brand text-white hover:bg-cyan-900; }
-.btn-secondary { @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
-.card { @apply rounded-xl border border-line bg-white p-5 shadow-sm; }
-.error { @apply rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800; }
-
+:root { color-scheme: light; }
+* { scrollbar-color: #b8c7c2 transparent; scrollbar-width: thin; }
+body {
+  @apply min-h-screen text-ink antialiased;
+  background-color: #f3f7f6;
+  background-image:
+    radial-gradient(circle at 8% 0%, rgba(14, 116, 144, .10), transparent 27rem),
+    radial-gradient(circle at 92% 12%, rgba(239, 68, 68, .06), transparent 24rem);
+}
+input, textarea, select { @apply w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-3 text-sm shadow-sm outline-none transition duration-200 placeholder:text-slate-400 hover:border-slate-300 focus:border-cyan-700 focus:ring-4 focus:ring-cyan-100/70; }
+label { @apply mb-2 block text-sm font-semibold text-slate-700; }
+.btn { @apply inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-2.5 text-sm font-bold tracking-wide transition duration-200 focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50; }
+.btn-primary { @apply btn bg-gradient-to-r from-cyan-800 to-brand text-white shadow-md shadow-cyan-900/15 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-900/20 focus:ring-cyan-200; }
+.btn-secondary { @apply btn border border-slate-200 bg-white/90 text-slate-700 shadow-sm hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md focus:ring-slate-200; }
+.btn-danger { @apply btn border border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 focus:ring-red-100; }
+.card { @apply rounded-2xl border border-white/80 bg-white/90 p-5 shadow-[0_8px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 backdrop-blur-sm; }
+.error { @apply rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm; }
+.eyebrow { @apply text-xs font-bold uppercase tracking-[0.18em] text-cyan-800; }
