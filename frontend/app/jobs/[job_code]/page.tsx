@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -9,7 +10,7 @@ import { Job, JobStatus, OutputType } from "@/types";
 const steps = ["Đã nhận hồ sơ", "Đang rà soát", "Kiểm tra kết quả", "Hoàn thành"];
 function stepIndex(status: JobStatus) { if (status === "COMPLETED") return 3; if (status === "REVIEW") return 2; if (["PROCESSING", "WAITING_FOR_INFO"].includes(status)) return 1; return 0; }
 export default function JobDetail({ params }: { params: Promise<{job_code: string}> }) {
-  const { job_code } = use(params); const [job, setJob] = useState<Job>(); const [error, setError] = useState("");
+  const { job_code } = use(params); const router = useRouter(); const [job, setJob] = useState<Job>(); const [error, setError] = useState(""); const [actionError, setActionError] = useState(""); const [busy, setBusy] = useState(false);
   useEffect(() => {
     let active = true;
     const load = () => api<Job>(`/jobs/${job_code}`).then(value => { if (active) setJob(value); }).catch(e => { if (active) setError(e.message); });
@@ -31,8 +32,24 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
   const viewerSource = showAnnotatedPdf
     ? `/api/jobs/${job.job_code}/outputs/${annotatedPdf.id}/view#toolbar=1&navpanes=0`
     : `/api/jobs/${job.job_code}/input/view#toolbar=1&navpanes=0`;
+  async function renameJob() {
+    const projectName = window.prompt("Tên hồ sơ mới", job?.project_name || "");
+    if (projectName === null) return;
+    if (!projectName.trim()) { setActionError("Tên hồ sơ không được để trống."); return; }
+    setBusy(true); setActionError("");
+    try { setJob(await api<Job>(`/jobs/${job_code}`, { method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({project_name: projectName}) })); }
+    catch (err) { setActionError(err instanceof Error ? err.message : "Không thể đổi tên hồ sơ."); }
+    finally { setBusy(false); }
+  }
+  async function deleteJob() {
+    if (!window.confirm(`Xóa hồ sơ ${job?.job_code} và toàn bộ tệp liên quan? Thao tác này không thể hoàn tác.`)) return;
+    setBusy(true); setActionError("");
+    try { await api(`/jobs/${job_code}`, {method: "DELETE"}); router.push("/"); router.refresh(); }
+    catch (err) { setActionError(err instanceof Error ? err.message : "Không thể xóa hồ sơ."); setBusy(false); }
+  }
   return <Shell wide><Link href="/" className="mb-4 inline-block text-sm text-slate-600">← Danh sách hồ sơ</Link>
-    <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="font-mono text-sm font-bold text-brand">{job.job_code}</p><h1 className="mt-1 text-2xl font-bold">{job.project_name}</h1><p className="mt-1 text-sm text-slate-500">Ngày gửi: {formatDate(job.created_at)}</p></div><StatusBadge status={job.status} /></div>
+    <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="font-mono text-sm font-bold text-brand">{job.job_code}</p><h1 className="mt-1 text-2xl font-bold">{job.project_name}</h1><p className="mt-1 text-sm text-slate-500">Ngày gửi: {formatDate(job.created_at)}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={renameJob} disabled={busy} className="btn-secondary">ĐỔI TÊN</button><button type="button" onClick={deleteJob} disabled={busy} className="btn-danger">XÓA HỒ SƠ</button></div></div><StatusBadge status={job.status} /></div>
+    {actionError && <p className="error mb-5">{actionError}</p>}
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
       <section className="min-w-0 rounded-xl border border-line bg-white p-3 shadow-sm sm:p-4">
         <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="font-bold">{viewerTitle}</h2><p className="mt-1 text-xs text-slate-500">{showAnnotatedPdf ? "Đang hiển thị kết quả PDF đã đánh dấu lỗi." : "Đang hiển thị PDF bạn đã gửi."}</p></div><a href={showAnnotatedPdf ? `/api/jobs/${job.job_code}/outputs/${annotatedPdf.id}/download` : `/api/jobs/${job.job_code}/input/download`} className="btn-secondary shrink-0">TẢI PDF</a></div>

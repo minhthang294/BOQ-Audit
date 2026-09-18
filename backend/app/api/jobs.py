@@ -1,3 +1,7 @@
+import logging
+import shutil
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
@@ -6,10 +10,11 @@ from app.api.deps import current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.entities import Job, JobStatus, User, UserRole, utcnow
-from app.schemas.api import JobListResponse, JobResponse, OutputResponse
+from app.schemas.api import CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
 from app.storage.files import PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+logger = logging.getLogger("boq-audit.jobs")
 MAX_ACTIVE_JOBS_PER_USER = 2
 ACTIVE_JOB_STATUSES = (
     JobStatus.SUBMITTED,
@@ -118,6 +123,50 @@ async def create_job(
             db.delete(incomplete_job)
             db.commit()
         raise
+
+
+@router.patch("/{job_code}", response_model=JobResponse)
+async def rename_job(
+    job_code: str,
+    payload: CustomerUpdateJob,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    job = owned_job(db, job_code, user)
+    job.project_name = payload.project_name
+    db.commit()
+    return visible_customer_job(owned_job(db, job_code, user))
+
+
+@router.delete("/{job_code}", response_model=MessageResponse)
+async def delete_job(job_code: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    job = owned_job(db, job_code, user)
+    jobs_root = get_settings().jobs_dir.resolve()
+    job_directory = (jobs_root / job.job_code).resolve()
+    if job_directory.parent != jobs_root:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Đường dẫn hồ sơ không hợp lệ")
+
+    quarantined_directory = jobs_root / f".deleting-{job.job_code}-{uuid4().hex}"
+    moved = False
+    try:
+        if job_directory.exists():
+            job_directory.rename(quarantined_directory)
+            moved = True
+        db.delete(job)
+        db.commit()
+    except Exception:
+        db.rollback()
+        if moved and quarantined_directory.exists():
+            quarantined_directory.rename(job_directory)
+        raise
+
+    if moved:
+        try:
+            shutil.rmtree(quarantined_directory)
+        except OSError:
+            logger.exception("customer_job_files_cleanup_failed user_id=%s job_code=%s", user.id, job_code)
+    logger.info("customer_job_deleted user_id=%s job_code=%s", user.id, job_code)
+    return {"message": "Đã xóa hồ sơ"}
 
 
 @router.get("/{job_code}", response_model=JobResponse)

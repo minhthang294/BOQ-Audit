@@ -35,6 +35,31 @@ def test_create_get_and_idor(client, pdf_bytes):
     assert client.get(f"/api/jobs/{code}/input/view").status_code == 404
 
 
+def test_customer_can_rename_and_delete_only_owned_job(client, pdf_bytes):
+    login(client, "owner", "owner-pass-123")
+    code = create_job(client, pdf_bytes).json()["job_code"]
+    job_directory = get_settings().jobs_dir / code
+    assert job_directory.is_dir()
+
+    client.post("/api/auth/logout")
+    login(client, "other", "other-pass-123")
+    assert client.patch(f"/api/jobs/{code}", json={"project_name": "Tên chiếm quyền"}).status_code == 404
+    assert client.delete(f"/api/jobs/{code}").status_code == 404
+
+    client.post("/api/auth/logout")
+    login(client, "owner", "owner-pass-123")
+    renamed = client.patch(f"/api/jobs/{code}", json={"project_name": "  Cầu đã đổi tên  "})
+    assert renamed.status_code == 200
+    assert renamed.json()["project_name"] == "Cầu đã đổi tên"
+    assert client.patch(f"/api/jobs/{code}", json={"project_name": "   "}).status_code == 422
+    assert client.patch(f"/api/jobs/{code}", json={"project_name": "Tên", "status": "COMPLETED"}).status_code == 422
+
+    deleted = client.delete(f"/api/jobs/{code}")
+    assert deleted.status_code == 200
+    assert not job_directory.exists()
+    assert client.get(f"/api/jobs/{code}").status_code == 404
+
+
 def test_admin_workflow_and_customer_download(client, pdf_bytes):
     login(client, "owner", "owner-pass-123")
     code = create_job(client, pdf_bytes).json()["job_code"]

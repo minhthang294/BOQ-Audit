@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.entities import JobStatus, OutputType, UserRole
 
@@ -52,6 +52,19 @@ class AdminJobResponse(JobResponse):
 class JobListResponse(BaseModel):
     items: list[JobResponse]
     total: int
+
+
+class CustomerUpdateJob(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    project_name: str = Field(min_length=1, max_length=240)
+
+    @field_validator("project_name")
+    @classmethod
+    def normalize_project_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Tên công trình không được để trống")
+        return value
 
 
 class AdminJobListResponse(BaseModel):

@@ -91,7 +91,7 @@ docker compose up -d
 ## API chính
 
 - `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
-- `GET|POST /api/jobs`, `GET /api/jobs/{job_code}`
+- `GET|POST /api/jobs`, `GET|PATCH|DELETE /api/jobs/{job_code}`
 - `GET /api/jobs/{job_code}/input/download`
 - `GET /api/jobs/{job_code}/outputs/{output_id}/download`
 - `GET /api/jobs/{job_code}/outputs/{output_id}/view`
