@@ -1,10 +1,12 @@
+import hashlib
 import re
 import unicodedata
+from email.utils import formatdate
 from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import get_settings
@@ -78,17 +80,74 @@ def stored_job_file(job_code: str, stored_path: str) -> Path:
     return path
 
 
-def stream_file(path: Path, filename: str, media_type: str = "application/octet-stream", inline: bool = False) -> StreamingResponse:
-    async def chunks():
-        with path.open("rb") as source:
-            while chunk := source.read(1024 * 1024):
-                yield chunk
-
+def stream_file(
+    path: Path,
+    filename: str,
+    media_type: str = "application/octet-stream",
+    inline: bool = False,
+    request: Request | None = None,
+) -> Response:
+    stat_result = path.stat()
     safe_name = safe_display_filename(filename)
     disposition_type = "inline" if inline else "attachment"
     disposition = f"{disposition_type}; filename*=UTF-8''{quote(safe_name)}"
-    headers = {
+    cache_control = "private, no-cache" if inline else "private, no-store"
+    etag_source = f"{stat_result.st_mtime_ns}-{stat_result.st_size}".encode()
+    etag = f'"{hashlib.md5(etag_source, usedforsecurity=False).hexdigest()}"'
+    last_modified = formatdate(stat_result.st_mtime, usegmt=True)
+    common_headers = {
         "Content-Disposition": disposition,
-        "Cache-Control": "private, no-store",
+        "Cache-Control": cache_control,
+        "Accept-Ranges": "bytes",
+        "ETag": etag,
+        "Last-Modified": last_modified,
     }
-    return StreamingResponse(chunks(), media_type=media_type, headers=headers)
+    # Authorization has already run before this helper. Revalidation therefore
+    # saves the PDF transfer without allowing a cached draft to bypass access
+    # checks after logout or after COMPLETED is moved back to REVIEW.
+    if inline and request and request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=common_headers)
+
+    start = 0
+    end = stat_result.st_size
+    response_status = status.HTTP_200_OK
+    range_header = request.headers.get("range") if inline and request else None
+    if range_header and (not request.headers.get("if-range") or request.headers["if-range"] in {etag, last_modified}):
+        try:
+            unit, value = range_header.split("=", 1)
+            if unit.strip().lower() != "bytes" or "," in value:
+                raise ValueError
+            first, last = (part.strip() for part in value.split("-", 1))
+            if first:
+                start = int(first)
+                end = min(int(last) + 1, stat_result.st_size) if last else stat_result.st_size
+            else:
+                suffix_length = int(last)
+                if suffix_length <= 0:
+                    raise ValueError
+                start = max(stat_result.st_size - suffix_length, 0)
+            if start < 0 or start >= end or start >= stat_result.st_size:
+                raise ValueError
+            response_status = status.HTTP_206_PARTIAL_CONTENT
+            common_headers["Content-Range"] = f"bytes {start}-{end - 1}/{stat_result.st_size}"
+        except (TypeError, ValueError):
+            return Response(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                headers={**common_headers, "Content-Range": f"bytes */{stat_result.st_size}"},
+            )
+
+    content_length = end - start
+    common_headers["Content-Length"] = str(content_length)
+
+    async def chunks():
+        remaining = content_length
+        with path.open("rb") as source:
+            source.seek(start)
+            while remaining:
+                chunk = source.read(min(1024 * 1024, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+
+    return StreamingResponse(chunks(), status_code=response_status, media_type=media_type, headers=common_headers)

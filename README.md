@@ -193,6 +193,7 @@ Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được v�
 - Backend kiểm role và ownership; truy vấn job customer luôn ràng buộc `user_id` để chặn IDOR.
 - Customer chỉ nhận metadata/download/preview output khi job đang `COMPLETED`; chuyển lại `REVIEW` thu hồi quyền ngay. Admin vẫn xem được output nháp.
 - Mọi download đi qua API authorization và streaming response; không public `/data`.
+- PDF preview hỗ trợ byte-range và browser cache riêng tư qua ETag/304. Mỗi lần dùng cache vẫn revalidate authorization, nên logout hoặc chuyển job về `REVIEW` sẽ thu hồi output ngay.
 - Filename được lấy basename, chuẩn hóa; đường dẫn lưu sinh ngẫu nhiên, không ghép path từ request.
 - Kiểm extension, MIME, magic bytes, file rỗng và giới hạn kích thước trong lúc stream.
 - Upload đọc theo chunk 1 MiB qua API bất đồng bộ của `UploadFile`; transaction SQLite tạo job kết thúc trước khi copy file lớn.

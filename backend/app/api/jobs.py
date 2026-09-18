@@ -2,7 +2,7 @@ import logging
 import shutil
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
@@ -182,10 +182,10 @@ async def download_input(job_code: str, user: User = Depends(current_user), db: 
 
 
 @router.get("/{job_code}/input/view")
-async def view_input(job_code: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+async def view_input(job_code: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     job = owned_job(db, job_code, user)
     path = stored_job_file(job.job_code, job.input_file_path)
-    return stream_file(path, job.original_filename, "application/pdf", inline=True)
+    return stream_file(path, job.original_filename, "application/pdf", inline=True, request=request)
 
 
 @router.get("/{job_code}/outputs", response_model=list[OutputResponse])
@@ -207,10 +207,16 @@ async def download_output(job_code: str, output_id: int, user: User = Depends(cu
 
 
 @router.get("/{job_code}/outputs/{output_id}/view")
-async def view_output(job_code: str, output_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+async def view_output(
+    job_code: str,
+    output_id: int,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
     job = output_access_job(db, job_code, user)
     output = next((item for item in job.outputs if item.id == output_id), None)
     if not output or output.file_type.value != "ANNOTATED_PDF":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy PDF đánh dấu")
     path = stored_job_file(job.job_code, output.file_path)
-    return stream_file(path, output.original_filename, "application/pdf", inline=True)
+    return stream_file(path, output.original_filename, "application/pdf", inline=True, request=request)

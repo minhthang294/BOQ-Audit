@@ -26,13 +26,23 @@ def test_create_get_and_idor(client, pdf_bytes):
     viewed = client.get(f"/api/jobs/{code}/input/view")
     assert viewed.status_code == 200
     assert viewed.headers["content-disposition"].startswith("inline")
-    assert viewed.headers["cache-control"] == "private, no-store"
+    assert viewed.headers["cache-control"] == "private, no-cache"
+    assert viewed.headers["accept-ranges"] == "bytes"
+    assert viewed.headers["etag"]
+    cached = client.get(f"/api/jobs/{code}/input/view", headers={"If-None-Match": viewed.headers["etag"]})
+    assert cached.status_code == 304
+    assert cached.content == b""
+    partial = client.get(f"/api/jobs/{code}/input/view", headers={"Range": "bytes=0-3"})
+    assert partial.status_code == 206
+    assert partial.content == b"%PDF"
+    assert partial.headers["content-range"].startswith("bytes 0-3/")
 
     client.post("/api/auth/logout")
     login(client, "other", "other-pass-123")
     assert client.get(f"/api/jobs/{code}").status_code == 404
     assert client.get(f"/api/jobs/{code}/input/download").status_code == 404
     assert client.get(f"/api/jobs/{code}/input/view").status_code == 404
+    assert client.get(f"/api/jobs/{code}/input/view", headers={"If-None-Match": viewed.headers["etag"]}).status_code == 404
 
 
 def test_customer_can_rename_and_delete_only_owned_job(client, pdf_bytes):
@@ -96,6 +106,11 @@ def test_admin_workflow_and_customer_download(client, pdf_bytes):
     assert viewed.status_code == 200
     assert viewed.content.startswith(b"%PDF")
     assert viewed.headers["content-disposition"].startswith("inline")
+    cached = client.get(
+        f"/api/jobs/{code}/outputs/{annotated_id}/view",
+        headers={"If-None-Match": viewed.headers["etag"]},
+    )
+    assert cached.status_code == 304
     assert client.get(f"/api/jobs/{code}/outputs/{output_id}/view").status_code == 404
 
 
@@ -138,6 +153,9 @@ def test_customer_outputs_hidden_until_completed_and_cross_customer_idor(client,
     assert len(client.get(f"/api/jobs/{code}/outputs").json()) == 2
     assert client.get(f"/api/jobs/{code}/outputs/{excel['id']}/download").content.startswith(b"PK")
     assert client.get(f"/api/jobs/{code}/outputs/{annotated['id']}/download").content.startswith(b"%PDF")
+    completed_view = client.get(f"/api/jobs/{code}/outputs/{annotated['id']}/view")
+    assert completed_view.status_code == 200
+    completed_etag = completed_view.headers["etag"]
 
     # Reopening a completed job immediately revokes customer output access.
     client.post("/api/auth/logout")
@@ -147,6 +165,10 @@ def test_customer_outputs_hidden_until_completed_and_cross_customer_idor(client,
     login(client, "owner", "owner-pass-123")
     assert client.get(f"/api/jobs/{code}").json()["outputs"] == []
     assert client.get(f"/api/jobs/{code}/outputs/{excel['id']}/download").status_code == 404
+    assert client.get(
+        f"/api/jobs/{code}/outputs/{annotated['id']}/view",
+        headers={"If-None-Match": completed_etag},
+    ).status_code == 404
     client.post("/api/auth/logout")
     login(client, "admin", "admin-pass-123")
     assert client.post(f"/api/admin/jobs/{code}/complete").status_code == 200
