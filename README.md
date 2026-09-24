@@ -1,6 +1,6 @@
 # BOQ Audit Portal V1
 
-Cổng web tối giản cho khách hàng gửi PDF hồ sơ BOQ, theo dõi trạng thái và nhận báo cáo Excel/PDF đánh dấu. Việc tra soát chuyên môn ở V1 được admin thực hiện thủ công ngoài hệ thống; ứng dụng chỉ quản lý quy trình và tệp.
+Cổng web tối giản cho khách hàng gửi PDF bản vẽ, tùy chọn đính kèm dự toán Excel, theo dõi trạng thái và nhận báo cáo Excel/PDF đánh dấu. Việc tra soát chuyên môn ở V1 được admin thực hiện thủ công ngoài hệ thống; ứng dụng chỉ quản lý quy trình và tệp.
 
 ## Kiến trúc
 
@@ -93,10 +93,12 @@ docker compose up -d
 - `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
 - `GET|POST /api/jobs`, `GET|PATCH|DELETE /api/jobs/{job_code}`
 - `GET /api/jobs/{job_code}/input/download`
+- `GET /api/jobs/{job_code}/estimate/download`
 - `GET /api/jobs/{job_code}/outputs/{output_id}/download`
 - `GET /api/jobs/{job_code}/outputs/{output_id}/view`
 - `GET /api/admin/jobs`, `GET|PATCH /api/admin/jobs/{job_code}`
 - `GET /api/admin/jobs/{job_code}/input/download`
+- `GET /api/admin/jobs/{job_code}/estimate/download`
 - `POST /api/admin/jobs/{job_code}/outputs`
 - `DELETE /api/admin/jobs/{job_code}/outputs/{output_id}`
 - `DELETE /api/admin/jobs/{job_code}`
@@ -155,7 +157,7 @@ boq.example.com {
         path /api/jobs /api/admin/jobs/*/outputs
     }
     request_body @uploads {
-        max_size 510MB
+        max_size 1010MB
     }
 
     @api path /api/*
@@ -168,7 +170,7 @@ boq.example.com {
 }
 ```
 
-`510MB` chừa multipart overhead cho `MAX_UPLOAD_MB=500`; nếu đổi application limit, cập nhật proxy limit tương ứng. Caddy tự cấp và gia hạn HTTPS. Khởi động và kiểm tra:
+`1010MB` cho phép một request chứa cả PDF và Excel, mỗi tệp tối đa `MAX_UPLOAD_MB=500`, đồng thời chừa multipart overhead. Nếu đổi application limit, cập nhật proxy limit tương ứng. Caddy tự cấp và gia hạn HTTPS. Khởi động và kiểm tra:
 
 ```bash
 docker compose config

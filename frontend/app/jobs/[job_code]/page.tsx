@@ -46,7 +46,8 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
   const progress = progressState(job.status, Math.max(0, now - startedAt));
   const output = (type: OutputType) => job.outputs.find(item => item.file_type === type);
   const downloads = [
-    { item: output("EXCEL_REPORT"), label: "TẢI BÁO CÁO EXCEL" },
+    { item: output("EXCEL_REPORT"), label: "TẢI BÁO CÁO RÀ SOÁT BOQ" },
+    { item: output("ESTIMATE_REPORT"), label: "TẢI BÁO CÁO RÀ SOÁT DỰ TOÁN" },
     { item: output("ANNOTATED_PDF"), label: "TẢI PDF ĐÁNH DẤU" },
   ];
   const annotatedPdf = output("ANNOTATED_PDF");
@@ -91,8 +92,8 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
             <span className={`text-sm leading-6 ${active ? "font-medium text-ink" : done ? "text-slate-500" : "text-slate-400"}`}>{label}</span>
           </li>;
         })}</ol></section>
-        {job.status === "COMPLETED" && <section className="card"><h2 className="font-bold">Kết quả tra soát</h2><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-lg bg-red-50 p-3"><p className="text-xs text-red-700">Lỗi nghiêm trọng</p><p className="mt-1 text-2xl font-bold text-red-900">{job.critical_errors}</p></div><div className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-700">Cần lưu ý</p><p className="mt-1 text-2xl font-bold text-amber-900">{job.warnings}</p></div></div>{job.customer_notes && <div className="mt-4 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">{job.customer_notes}</div>}<div className="mt-4 space-y-2">{downloads.map(({item, label}) => item ? <a key={item.id} className="btn-primary w-full" href={`/api/jobs/${job.job_code}/outputs/${item.id}/download`}>{label}<span className="ml-2 text-xs opacity-70">({fileSize(item.file_size)})</span></a> : null)}</div></section>}
-        <section className="card"><h2 className="font-bold">Tệp hồ sơ</h2><p className="mt-2 break-all text-sm font-medium">{job.original_filename}</p></section>
+        {job.status === "COMPLETED" && <section className="card"><h2 className="font-bold">Kết quả tra soát</h2><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-lg bg-red-50 p-3"><p className="text-xs text-red-700">Lỗi nghiêm trọng</p><p className="mt-1 text-2xl font-bold text-red-900">{job.critical_errors}</p></div><div className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-700">Cần lưu ý</p><p className="mt-1 text-2xl font-bold text-amber-900">{job.warnings}</p></div></div>{job.customer_notes && <div className="rich-text-content mt-4 rounded-lg bg-slate-50 p-3 text-sm" dangerouslySetInnerHTML={{ __html: job.customer_notes }} />}<div className="mt-4 space-y-2">{downloads.map(({item, label}) => item ? <a key={item.id} className="btn-primary w-full" href={`/api/jobs/${job.job_code}/outputs/${item.id}/download`}>{label}<span className="ml-2 text-xs opacity-70">({fileSize(item.file_size)})</span></a> : null)}</div></section>}
+        <section className="card"><h2 className="font-bold">Tệp đầu vào</h2><div className="mt-3 space-y-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Bản vẽ PDF</p><p className="mt-1 break-all text-sm font-medium">{job.original_filename}</p></div>{job.estimate_input && <div className="border-t border-slate-100 pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Dự toán Excel</p><p className="mt-1 break-all text-sm font-medium">{job.estimate_input.original_filename} <span className="font-normal text-slate-400">({fileSize(job.estimate_input.file_size)})</span></p><a href={`/api/jobs/${job.job_code}/estimate/download`} className="btn-secondary mt-3 w-full">TẢI DỰ TOÁN</a></div>}</div></section>
       </aside>
     </div>
   </Shell>;

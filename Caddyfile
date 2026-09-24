@@ -23,7 +23,9 @@
         path /api/jobs /api/admin/jobs/*/outputs
     }
     request_body @uploads {
-        max_size 510MB
+        # Một yêu cầu tạo hồ sơ có thể chứa PDF và Excel, mỗi tệp tối đa
+        # MAX_UPLOAD_MB; chừa thêm dung lượng cho multipart overhead.
+        max_size 1010MB
     }
 
     @api path /api/*

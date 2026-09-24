@@ -20,3 +20,10 @@ label { @apply mb-2 block text-sm font-semibold text-slate-700; }
 .card { @apply rounded-2xl border border-white/80 bg-white/90 p-5 shadow-[0_8px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 backdrop-blur-sm; }
 .error { @apply rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm; }
 .eyebrow { @apply text-xs font-bold uppercase tracking-[0.18em] text-cyan-800; }
+.rich-text-content { @apply whitespace-pre-wrap break-words; }
+.rich-text-content p + p, .rich-text-content div + div { @apply mt-2; }
+.rich-text-content ul { @apply my-2 list-disc pl-6; }
+.rich-text-content ol { @apply my-2 list-decimal pl-6; }
+.rich-text-content li + li { @apply mt-1; }
+.rich-text-content blockquote { @apply my-2 border-l-4 border-slate-300 pl-3 text-slate-600; }
+.rich-text-content a { @apply text-brand underline; }

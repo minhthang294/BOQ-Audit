@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import current_user
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.models.entities import Job, JobStatus, User, UserRole, utcnow
+from app.models.entities import Job, JobEstimateInput, JobStatus, User, UserRole, utcnow
 from app.schemas.api import CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
-from app.storage.files import PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
+from app.storage.files import EXCEL_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger("boq-audit.jobs")
@@ -26,7 +26,9 @@ ACTIVE_JOB_STATUSES = (
 
 def owned_job(db: Session, job_code: str, user: User) -> Job:
     job = db.scalar(
-        select(Job).options(selectinload(Job.outputs)).where(Job.job_code == job_code, Job.user_id == user.id)
+        select(Job)
+        .options(selectinload(Job.outputs), selectinload(Job.estimate_input))
+        .where(Job.job_code == job_code, Job.user_id == user.id)
     )
     if not job:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hồ sơ")
@@ -42,7 +44,11 @@ def visible_customer_job(job: Job) -> JobResponse:
 
 def output_access_job(db: Session, job_code: str, user: User) -> Job:
     if user.role == UserRole.ADMIN:
-        job = db.scalar(select(Job).options(selectinload(Job.outputs)).where(Job.job_code == job_code))
+        job = db.scalar(
+            select(Job)
+            .options(selectinload(Job.outputs), selectinload(Job.estimate_input))
+            .where(Job.job_code == job_code)
+        )
         if not job:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hồ sơ")
         return job
@@ -55,7 +61,12 @@ def output_access_job(db: Session, job_code: str, user: User) -> Job:
 
 @router.get("", response_model=JobListResponse)
 async def list_jobs(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    query = select(Job).options(selectinload(Job.outputs)).where(Job.user_id == user.id).order_by(Job.created_at.desc())
+    query = (
+        select(Job)
+        .options(selectinload(Job.outputs), selectinload(Job.estimate_input))
+        .where(Job.user_id == user.id)
+        .order_by(Job.created_at.desc())
+    )
     items = list(db.scalars(query).all())
     return {"items": [visible_customer_job(item) for item in items], "total": len(items)}
 
@@ -64,13 +75,19 @@ async def list_jobs(user: User = Depends(current_user), db: Session = Depends(ge
 async def create_job(
     project_name: str = Form(min_length=1, max_length=240),
     file: UploadFile = File(),
+    estimate_file: UploadFile | None = File(default=None),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
     display_name, ext = validate_upload(file, {".pdf"}, PDF_MIMES)
+    estimate_metadata: tuple[str, str] | None = None
+    if estimate_file and estimate_file.filename:
+        estimate_metadata = validate_upload(estimate_file, {".xlsx", ".xls"}, EXCEL_MIMES)
     clean_project_name = project_name.strip()
     if not clean_project_name:
         file.file.close()
+        if estimate_file:
+            estimate_file.file.close()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Tên công trình không được để trống")
     # SQLite không có row-level lock. BEGIN IMMEDIATE tuần tự hóa đoạn kiểm tra
     # quota + tạo job, ngăn hai upload đồng thời cùng vượt giới hạn.
@@ -85,6 +102,8 @@ async def create_job(
     if active_jobs >= MAX_ACTIVE_JOBS_PER_USER:
         db.rollback()
         file.file.close()
+        if estimate_file:
+            estimate_file.file.close()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Bạn đang có 2 hồ sơ được xử lý. Vui lòng chờ một hồ sơ hoàn thành trước khi tạo hồ sơ mới.",
@@ -104,20 +123,35 @@ async def create_job(
     job_id = job.id
     job_code = job.job_code
     destination = get_settings().jobs_dir / job_code / "input" / random_stored_name(ext)
+    estimate_destination = None
+    if estimate_metadata:
+        _, estimate_ext = estimate_metadata
+        estimate_destination = get_settings().jobs_dir / job_code / "input" / random_stored_name(estimate_ext)
     # End the quota/create transaction before copying a potentially 500 MB file.
     db.commit()
     try:
         await save_upload(file, destination, "pdf")
+        if estimate_file and estimate_metadata and estimate_destination:
+            estimate_name, estimate_ext = estimate_metadata
+            estimate_size = await save_upload(estimate_file, estimate_destination, estimate_ext.removeprefix("."))
         persisted_job = db.get(Job, job_id)
         if not persisted_job:
             raise RuntimeError("Job disappeared while storing its input file")
         persisted_job.input_file_path = str(destination)
+        if estimate_metadata and estimate_destination:
+            persisted_job.estimate_input = JobEstimateInput(
+                original_filename=estimate_name,
+                stored_filename=estimate_destination.name,
+                file_path=str(estimate_destination),
+                file_size=estimate_size,
+            )
         db.commit()
-        db.refresh(persisted_job)
-        return persisted_job
+        return owned_job(db, job_code, user)
     except Exception:
         db.rollback()
         destination.unlink(missing_ok=True)
+        if estimate_destination:
+            estimate_destination.unlink(missing_ok=True)
         incomplete_job = db.get(Job, job_id)
         if incomplete_job:
             db.delete(incomplete_job)
@@ -179,6 +213,15 @@ async def download_input(job_code: str, user: User = Depends(current_user), db: 
     job = owned_job(db, job_code, user)
     path = stored_job_file(job.job_code, job.input_file_path)
     return stream_file(path, job.original_filename, "application/pdf")
+
+
+@router.get("/{job_code}/estimate/download")
+async def download_estimate(job_code: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    job = owned_job(db, job_code, user)
+    if not job.estimate_input:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Hồ sơ không có tệp dự toán")
+    path = stored_job_file(job.job_code, job.estimate_input.file_path)
+    return stream_file(path, job.estimate_input.original_filename)
 
 
 @router.get("/{job_code}/input/view")

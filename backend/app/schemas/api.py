@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.rich_text import sanitize_rich_text
 from app.models.entities import JobStatus, OutputType, UserRole
 
 
@@ -27,6 +28,13 @@ class OutputResponse(BaseModel):
     created_at: datetime
 
 
+class EstimateInputResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    original_filename: str
+    file_size: int
+    created_at: datetime
+
+
 class JobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     job_code: str
@@ -42,6 +50,12 @@ class JobResponse(BaseModel):
     completed_at: datetime | None
     updated_at: datetime
     outputs: list[OutputResponse] = Field(default_factory=list)
+    estimate_input: EstimateInputResponse | None = None
+
+    @field_validator("customer_notes", mode="before")
+    @classmethod
+    def sanitize_customer_notes_for_display(cls, value: str | None) -> str | None:
+        return sanitize_rich_text(value) if value is not None else None
 
 
 class AdminJobResponse(JobResponse):
@@ -78,6 +92,11 @@ class AdminUpdateJob(BaseModel):
     warnings: int | None = Field(default=None, ge=0)
     admin_notes: str | None = Field(default=None, max_length=10000)
     customer_notes: str | None = Field(default=None, max_length=10000)
+
+    @field_validator("customer_notes")
+    @classmethod
+    def sanitize_customer_notes(cls, value: str | None) -> str | None:
+        return sanitize_rich_text(value) if value is not None else None
 
 
 class MessageResponse(BaseModel):

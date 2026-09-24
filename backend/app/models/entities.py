@@ -1,5 +1,6 @@
 import enum
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -27,6 +28,7 @@ class JobStatus(str, enum.Enum):
 
 class OutputType(str, enum.Enum):
     EXCEL_REPORT = "EXCEL_REPORT"
+    ESTIMATE_REPORT = "ESTIMATE_REPORT"
     ANNOTATED_PDF = "ANNOTATED_PDF"
     OTHER = "OTHER"
 
@@ -69,6 +71,20 @@ class Job(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     user: Mapped[User] = relationship(back_populates="jobs")
     outputs: Mapped[list["JobOutput"]] = relationship(back_populates="job", cascade="all, delete-orphan")
+    estimate_input: Mapped[Optional["JobEstimateInput"]] = relationship(
+        back_populates="job", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class JobEstimateInput(Base):
+    __tablename__ = "job_estimate_inputs"
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    stored_filename: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str] = mapped_column(String(600))
+    file_size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    job: Mapped[Job] = relationship(back_populates="estimate_input")
 
 
 class JobOutput(Base):

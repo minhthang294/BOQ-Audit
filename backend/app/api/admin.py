@@ -20,7 +20,9 @@ logger = logging.getLogger("boq-audit.admin")
 
 def find_job(db: Session, job_code: str) -> Job:
     job = db.scalar(
-        select(Job).options(selectinload(Job.outputs), selectinload(Job.user)).where(Job.job_code == job_code)
+        select(Job)
+        .options(selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.user))
+        .where(Job.job_code == job_code)
     )
     if not job:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hồ sơ")
@@ -34,7 +36,9 @@ async def list_admin_jobs(
     _: User = Depends(admin_user),
     db: Session = Depends(get_db),
 ):
-    query = select(Job).join(Job.user).options(selectinload(Job.outputs), selectinload(Job.user))
+    query = select(Job).join(Job.user).options(
+        selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.user)
+    )
     if search:
         needle = f"%{search.strip()}%"
         query = query.where(or_(Job.job_code.ilike(needle), Job.project_name.ilike(needle), User.name.ilike(needle), User.email.ilike(needle)))
@@ -54,6 +58,15 @@ async def download_input(job_code: str, _: User = Depends(admin_user), db: Sessi
     job = find_job(db, job_code)
     path = stored_job_file(job.job_code, job.input_file_path)
     return stream_file(path, job.original_filename, "application/pdf")
+
+
+@router.get("/{job_code}/estimate/download")
+async def download_estimate(job_code: str, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    job = find_job(db, job_code)
+    if not job.estimate_input:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Hồ sơ không có tệp dự toán")
+    path = stored_job_file(job.job_code, job.estimate_input.file_path)
+    return stream_file(path, job.estimate_input.original_filename)
 
 
 @router.patch("/{job_code}", response_model=AdminJobResponse)
@@ -83,11 +96,14 @@ async def upload_output(
     if file_type == OutputType.ANNOTATED_PDF:
         display_name, ext = validate_upload(file, {".pdf"}, PDF_MIMES)
         kind = "pdf"
-    elif file_type == OutputType.EXCEL_REPORT:
+    elif file_type in {OutputType.EXCEL_REPORT, OutputType.ESTIMATE_REPORT}:
+        if file_type == OutputType.ESTIMATE_REPORT and not job.estimate_input:
+            file.file.close()
+            raise HTTPException(status.HTTP_409_CONFLICT, "Khách hàng không gửi kèm dự toán")
         display_name, ext = validate_upload(file, {".xlsx", ".xls"}, EXCEL_MIMES)
         kind = ext.removeprefix(".")
     else:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "V1 chỉ hỗ trợ báo cáo Excel và PDF đánh dấu")
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Chỉ hỗ trợ báo cáo Excel và PDF đánh dấu")
     stored_name = random_stored_name(ext)
     destination = get_settings().jobs_dir / job.job_code / "output" / stored_name
     size = await save_upload(file, destination, kind)
@@ -158,8 +174,15 @@ async def complete_job(job_code: str, _: User = Depends(admin_user), db: Session
     job = find_job(db, job_code)
     types = {output.file_type for output in job.outputs}
     required = {OutputType.EXCEL_REPORT, OutputType.ANNOTATED_PDF}
+    if job.estimate_input:
+        required.add(OutputType.ESTIMATE_REPORT)
     if not required.issubset(types):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Cần đủ báo cáo Excel và PDF đánh dấu trước khi hoàn thành")
+        message = (
+            "Cần đủ báo cáo BOQ, báo cáo dự toán và PDF đánh dấu trước khi hoàn thành"
+            if job.estimate_input
+            else "Cần đủ báo cáo Excel và PDF đánh dấu trước khi hoàn thành"
+        )
+        raise HTTPException(status.HTTP_409_CONFLICT, message)
     job.status = JobStatus.COMPLETED
     job.completed_at = utcnow()
     db.commit()
