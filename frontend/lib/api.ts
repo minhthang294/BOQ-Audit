@@ -13,8 +13,13 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return response.json();
 }
 
+// SQLite stores UTC timestamps without a timezone suffix. Treat them as UTC.
+export function parseApiDate(value: string): Date {
+  return new Date(/(?:Z|[+-]\d\d:\d\d)$/.test(value) ? value : `${value}Z`);
+}
+
 export function formatDate(value: string) {
-  return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
+  return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(parseApiDate(value));
 }
 
 export function fileSize(bytes: number) {

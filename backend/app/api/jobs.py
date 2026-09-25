@@ -10,9 +10,9 @@ from app.api.deps import current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.telegram import notify_pdf_upload
-from app.models.entities import Job, JobEstimateInput, JobStatus, User, UserRole, utcnow
+from app.models.entities import Job, JobEstimateInput, JobNarrativeInput, JobStatus, User, UserRole, utcnow
 from app.schemas.api import CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
-from app.storage.files import EXCEL_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
+from app.storage.files import EXCEL_MIMES, NARRATIVE_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger("boq-audit.jobs")
@@ -28,7 +28,7 @@ ACTIVE_JOB_STATUSES = (
 def owned_job(db: Session, job_code: str, user: User) -> Job:
     job = db.scalar(
         select(Job)
-        .options(selectinload(Job.outputs), selectinload(Job.estimate_input))
+        .options(selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.narrative_input))
         .where(Job.job_code == job_code, Job.user_id == user.id)
     )
     if not job:
@@ -47,7 +47,7 @@ def output_access_job(db: Session, job_code: str, user: User) -> Job:
     if user.role == UserRole.ADMIN:
         job = db.scalar(
             select(Job)
-            .options(selectinload(Job.outputs), selectinload(Job.estimate_input))
+            .options(selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.narrative_input))
             .where(Job.job_code == job_code)
         )
         if not job:
@@ -64,7 +64,7 @@ def output_access_job(db: Session, job_code: str, user: User) -> Job:
 async def list_jobs(user: User = Depends(current_user), db: Session = Depends(get_db)):
     query = (
         select(Job)
-        .options(selectinload(Job.outputs), selectinload(Job.estimate_input))
+        .options(selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.narrative_input))
         .where(Job.user_id == user.id)
         .order_by(Job.created_at.desc())
     )
@@ -78,6 +78,7 @@ async def create_job(
     project_name: str = Form(min_length=1, max_length=240),
     file: UploadFile = File(),
     estimate_file: UploadFile | None = File(default=None),
+    narrative_file: UploadFile | None = File(default=None),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
@@ -85,11 +86,16 @@ async def create_job(
     estimate_metadata: tuple[str, str] | None = None
     if estimate_file and estimate_file.filename:
         estimate_metadata = validate_upload(estimate_file, {".xlsx", ".xls"}, EXCEL_MIMES)
+    narrative_metadata: tuple[str, str] | None = None
+    if narrative_file and narrative_file.filename:
+        narrative_metadata = validate_upload(narrative_file, {".pdf", ".doc", ".docx"}, NARRATIVE_MIMES)
     clean_project_name = project_name.strip()
     if not clean_project_name:
         file.file.close()
         if estimate_file:
             estimate_file.file.close()
+        if narrative_file:
+            narrative_file.file.close()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Tên công trình không được để trống")
     # SQLite không có row-level lock. BEGIN IMMEDIATE tuần tự hóa đoạn kiểm tra
     # quota + tạo job, ngăn hai upload đồng thời cùng vượt giới hạn.
@@ -106,6 +112,8 @@ async def create_job(
         file.file.close()
         if estimate_file:
             estimate_file.file.close()
+        if narrative_file:
+            narrative_file.file.close()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Bạn đang có 2 hồ sơ được xử lý. Vui lòng chờ một hồ sơ hoàn thành trước khi tạo hồ sơ mới.",
@@ -129,6 +137,10 @@ async def create_job(
     if estimate_metadata:
         _, estimate_ext = estimate_metadata
         estimate_destination = get_settings().jobs_dir / job_code / "input" / random_stored_name(estimate_ext)
+    narrative_destination = None
+    if narrative_metadata:
+        _, narrative_ext = narrative_metadata
+        narrative_destination = get_settings().jobs_dir / job_code / "input" / random_stored_name(narrative_ext)
     # End the quota/create transaction before copying a potentially 500 MB file.
     db.commit()
     try:
@@ -136,6 +148,9 @@ async def create_job(
         if estimate_file and estimate_metadata and estimate_destination:
             estimate_name, estimate_ext = estimate_metadata
             estimate_size = await save_upload(estimate_file, estimate_destination, estimate_ext.removeprefix("."))
+        if narrative_file and narrative_metadata and narrative_destination:
+            narrative_name, narrative_ext = narrative_metadata
+            narrative_size = await save_upload(narrative_file, narrative_destination, narrative_ext.removeprefix("."))
         persisted_job = db.get(Job, job_id)
         if not persisted_job:
             raise RuntimeError("Job disappeared while storing its input file")
@@ -147,6 +162,13 @@ async def create_job(
                 file_path=str(estimate_destination),
                 file_size=estimate_size,
             )
+        if narrative_metadata and narrative_destination:
+            persisted_job.narrative_input = JobNarrativeInput(
+                original_filename=narrative_name,
+                stored_filename=narrative_destination.name,
+                file_path=str(narrative_destination),
+                file_size=narrative_size,
+            )
         db.commit()
         saved_job = owned_job(db, job_code, user)
         background_tasks.add_task(notify_pdf_upload, job_code, clean_project_name, display_name, user.email)
@@ -156,11 +178,22 @@ async def create_job(
         destination.unlink(missing_ok=True)
         if estimate_destination:
             estimate_destination.unlink(missing_ok=True)
+        if narrative_destination:
+            narrative_destination.unlink(missing_ok=True)
         incomplete_job = db.get(Job, job_id)
         if incomplete_job:
             db.delete(incomplete_job)
             db.commit()
         raise
+
+
+@router.get("/{job_code}/narrative/download")
+async def download_narrative(job_code: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    job = owned_job(db, job_code, user)
+    if not job.narrative_input:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Hồ sơ không có tệp thuyết minh")
+    path = stored_job_file(job.job_code, job.narrative_input.file_path)
+    return stream_file(path, job.narrative_input.original_filename)
 
 
 @router.patch("/{job_code}", response_model=JobResponse)

@@ -12,6 +12,10 @@ from fastapi.responses import StreamingResponse
 from app.core.config import get_settings
 
 PDF_MIMES = {"application/pdf", "application/x-pdf", "application/octet-stream"}
+NARRATIVE_MIMES = PDF_MIMES | {
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 EXCEL_MIMES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",
@@ -56,6 +60,10 @@ async def save_upload(file: UploadFile, destination: Path, expected_kind: str) -
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tệp rỗng")
         if expected_kind == "pdf" and not header.startswith(b"%PDF-"):
             raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Nội dung không phải tệp PDF hợp lệ")
+        if expected_kind == "docx" and not header.startswith(b"PK"):
+            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Nội dung không phải tệp DOCX hợp lệ")
+        if expected_kind == "doc" and not header.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
+            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Nội dung không phải tệp DOC hợp lệ")
         if expected_kind == "xlsx" and not header.startswith(b"PK"):
             raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Nội dung không phải tệp XLSX hợp lệ")
         if expected_kind == "xls" and not header.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):

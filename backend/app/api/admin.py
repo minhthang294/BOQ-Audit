@@ -21,7 +21,7 @@ logger = logging.getLogger("boq-audit.admin")
 def find_job(db: Session, job_code: str) -> Job:
     job = db.scalar(
         select(Job)
-        .options(selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.user))
+        .options(selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.narrative_input), selectinload(Job.user))
         .where(Job.job_code == job_code)
     )
     if not job:
@@ -37,7 +37,7 @@ async def list_admin_jobs(
     db: Session = Depends(get_db),
 ):
     query = select(Job).join(Job.user).options(
-        selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.user)
+        selectinload(Job.outputs), selectinload(Job.estimate_input), selectinload(Job.narrative_input), selectinload(Job.user)
     )
     if search:
         needle = f"%{search.strip()}%"
@@ -67,6 +67,15 @@ async def download_estimate(job_code: str, _: User = Depends(admin_user), db: Se
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Hồ sơ không có tệp dự toán")
     path = stored_job_file(job.job_code, job.estimate_input.file_path)
     return stream_file(path, job.estimate_input.original_filename)
+
+
+@router.get("/{job_code}/narrative/download")
+async def download_narrative(job_code: str, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    job = find_job(db, job_code)
+    if not job.narrative_input:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Hồ sơ không có tệp thuyết minh")
+    path = stored_job_file(job.job_code, job.narrative_input.file_path)
+    return stream_file(path, job.narrative_input.original_filename)
 
 
 @router.patch("/{job_code}", response_model=AdminJobResponse)

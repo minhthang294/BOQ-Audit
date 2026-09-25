@@ -35,6 +35,13 @@ class EstimateInputResponse(BaseModel):
     created_at: datetime
 
 
+class NarrativeInputResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    original_filename: str
+    file_size: int
+    created_at: datetime
+
+
 class JobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     job_code: str
@@ -51,6 +58,7 @@ class JobResponse(BaseModel):
     updated_at: datetime
     outputs: list[OutputResponse] = Field(default_factory=list)
     estimate_input: EstimateInputResponse | None = None
+    narrative_input: NarrativeInputResponse | None = None
 
     @field_validator("customer_notes", mode="before")
     @classmethod

@@ -71,6 +71,9 @@ class Job(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     user: Mapped[User] = relationship(back_populates="jobs")
     outputs: Mapped[list["JobOutput"]] = relationship(back_populates="job", cascade="all, delete-orphan")
+    narrative_input: Mapped[Optional["JobNarrativeInput"]] = relationship(
+        back_populates="job", cascade="all, delete-orphan", uselist=False
+    )
     estimate_input: Mapped[Optional["JobEstimateInput"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", uselist=False
     )
@@ -85,6 +88,17 @@ class JobEstimateInput(Base):
     file_size: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     job: Mapped[Job] = relationship(back_populates="estimate_input")
+
+
+class JobNarrativeInput(Base):
+    __tablename__ = "job_narrative_inputs"
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    stored_filename: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str] = mapped_column(String(600))
+    file_size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    job: Mapped[Job] = relationship(back_populates="narrative_input")
 
 
 class JobOutput(Base):

@@ -259,3 +259,47 @@ def test_sqlite_pragmas_and_health(client):
     health = client.get("/api/health")
     assert health.status_code == 200
     assert health.json() == {"status": "healthy", "database": "ok", "storage": "ok"}
+
+
+def test_optional_narrative_upload_and_authorized_download(client, pdf_bytes):
+    login(client, "owner", "owner-pass-123")
+    created = client.post(
+        "/api/jobs",
+        data={"project_name": "Cầu có thuyết minh"},
+        files={
+            "file": ("drawing.pdf", pdf_bytes, "application/pdf"),
+            "narrative_file": ("thuyet-minh.docx", b"PK\x03\x04test-docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        },
+    )
+    assert created.status_code == 201
+    code = created.json()["job_code"]
+    assert created.json()["narrative_input"]["original_filename"] == "thuyet-minh.docx"
+    assert client.get(f"/api/jobs/{code}/narrative/download").content == b"PK\x03\x04test-docx"
+
+    client.post("/api/auth/logout")
+    login(client, "other", "other-pass-123")
+    assert client.get(f"/api/jobs/{code}/narrative/download").status_code == 404
+    assert client.get(f"/api/admin/jobs/{code}/narrative/download").status_code == 403
+
+    client.post("/api/auth/logout")
+    login(client, "admin", "admin-pass-123")
+    assert client.get(f"/api/admin/jobs/{code}/narrative/download").content == b"PK\x03\x04test-docx"
+
+
+def test_narrative_is_optional_and_invalid_document_rolls_back(owner_client, pdf_bytes):
+    created = create_job(owner_client, pdf_bytes)
+    assert created.status_code == 201
+    assert created.json()["narrative_input"] is None
+    assert owner_client.get(f"/api/jobs/{created.json()['job_code']}/narrative/download").status_code == 404
+
+    invalid = owner_client.post(
+        "/api/jobs",
+        data={"project_name": "Thuyết minh lỗi"},
+        files={
+            "file": ("drawing.pdf", pdf_bytes, "application/pdf"),
+            "narrative_file": ("bad.doc", b"not a Word document", "application/msword"),
+        },
+    )
+    assert invalid.status_code == 415
+    with SessionLocal() as db:
+        assert db.query(Job).count() == 1
