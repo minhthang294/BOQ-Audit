@@ -55,6 +55,10 @@ Tạo thêm admin bằng cách thêm `--role ADMIN`. Đổi password admin hiệ
 docker compose exec backend python -m app.cli set-password --username admin --password 'mat-khau-moi-rat-manh'
 ```
 
+## Telegram notifications for customer PDF uploads
+
+Create a bot with Telegram's BotFather, send the bot a message (or add it to your target group), and obtain that conversation's chat ID from the bot's `getUpdates` API. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`, then restart the backend with `docker compose up -d --build backend`. Both values are required; leaving either blank disables notifications. A message with the job code, project, customer login, and PDF filename is sent after a successful upload. Telegram delivery failures are logged and do not affect the customer's upload.
+
 ## Vận hành
 
 ```bash

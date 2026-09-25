@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("/data")
     max_upload_mb: int = Field(default=500, ge=1, le=2048)
     frontend_url: str = "http://localhost:3000"
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
     cookie_secure: bool = False
     session_expire_hours: int = Field(default=12, ge=1, le=168)
 

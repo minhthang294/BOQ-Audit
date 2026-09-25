@@ -2,13 +2,14 @@ import logging
 import shutil
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.telegram import notify_pdf_upload
 from app.models.entities import Job, JobEstimateInput, JobStatus, User, UserRole, utcnow
 from app.schemas.api import CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
 from app.storage.files import EXCEL_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
@@ -73,6 +74,7 @@ async def list_jobs(user: User = Depends(current_user), db: Session = Depends(ge
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(
+    background_tasks: BackgroundTasks,
     project_name: str = Form(min_length=1, max_length=240),
     file: UploadFile = File(),
     estimate_file: UploadFile | None = File(default=None),
@@ -146,7 +148,9 @@ async def create_job(
                 file_size=estimate_size,
             )
         db.commit()
-        return owned_job(db, job_code, user)
+        saved_job = owned_job(db, job_code, user)
+        background_tasks.add_task(notify_pdf_upload, job_code, clean_project_name, display_name, user.email)
+        return saved_job
     except Exception:
         db.rollback()
         destination.unlink(missing_ok=True)
