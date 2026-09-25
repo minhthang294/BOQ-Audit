@@ -8,7 +8,15 @@ import { Job, User } from "@/types";
 
 export default function Dashboard() {
   const [user, setUser] = useState<User>(); const [jobs, setJobs] = useState<Job[]>([]); const [error, setError] = useState("");
-  useEffect(() => { Promise.all([api<User>("/auth/me"), api<{items: Job[]}>("/jobs")]).then(([u, j]) => { setUser(u); setJobs(j.items); }).catch(e => setError(e.message)); }, []);
+  useEffect(() => {
+    let active = true;
+    const load = () => Promise.all([api<User>("/auth/me"), api<{items: Job[]}>("/jobs")])
+      .then(([u, j]) => { if (active) { setUser(u); setJobs(j.items); setError(""); } })
+      .catch(e => { if (active) setError(e.message); });
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 30000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
   const activeJobs = jobs.filter(job => ["SUBMITTED", "PROCESSING", "WAITING_FOR_INFO", "REVIEW"].includes(job.status)).length;
   const quotaReached = activeJobs >= 2;
   return <Shell>
