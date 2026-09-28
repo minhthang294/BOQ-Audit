@@ -152,6 +152,8 @@ boq.example.com {
         X-Content-Type-Options nosniff
         Referrer-Policy strict-origin-when-cross-origin
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; frame-src 'self' blob:; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self' blob:"
         -Server
     }
 
@@ -176,7 +178,9 @@ boq.example.com {
 }
 ```
 
-`1520MB` cho phép một request chứa PDF, Excel và thuyết minh, mỗi tệp tối đa `MAX_UPLOAD_MB=500`, đồng thời chừa multipart overhead. Nếu đổi application limit, cập nhật proxy limit tương ứng. Caddy tự cấp và gia hạn HTTPS. Khởi động và kiểm tra:
+`1520MB` cho phép một request chứa PDF, Excel và thuyết minh, mỗi tệp tối đa `MAX_UPLOAD_MB=500`, đồng thời chừa multipart overhead. `MAX_TOTAL_STORAGE_MB` đặt quota chung cho kho hồ sơ, `MIN_FREE_DISK_MB` giữ dung lượng dự phòng, còn `UPLOAD_RATE_LIMIT`/`UPLOAD_RATE_WINDOW_SECONDS` giới hạn số lần upload của mỗi tài khoản. Nếu đổi application limit, cập nhật proxy limit tương ứng. Caddy tự cấp và gia hạn HTTPS. Khởi động và kiểm tra:
+
+Lần deploy đầu tiên có session server-side sẽ yêu cầu các tài khoản đang đăng nhập đăng nhập lại. Các lần logout và đổi mật khẩu sau đó thu hồi session ngay trong database.
 
 ```bash
 docker compose config
@@ -185,7 +189,7 @@ docker compose ps
 curl -fsS https://boq.example.com/api/health
 ```
 
-Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được và `DATA_DIR` tồn tại/có thể ghi. Log của ba service được xoay ở 10 MB × 3 file.
+Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `DATA_DIR` có thể ghi và kho hồ sơ còn quota/dung lượng dự phòng. Response health có `storage_used_mb`, `storage_free_mb` và `storage_quota_mb` để hệ thống giám sát phát cảnh báo. Log của ba service được xoay ở 10 MB × 3 file.
 
 ### Dữ liệu và quyền container
 
@@ -197,7 +201,7 @@ Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được v�
 
 ## Bảo mật đã áp dụng
 
-- Mật khẩu Argon2; JWT hết hạn trong cookie HTTP-only, SameSite Strict và hỗ trợ Secure.
+- Mật khẩu Argon2; JWT hết hạn trong cookie HTTP-only, SameSite Strict và hỗ trợ Secure. Mỗi JWT gắn với session trong database nên logout hoặc đổi mật khẩu thu hồi phiên ngay.
 - Backend kiểm role và ownership; truy vấn job customer luôn ràng buộc `user_id` để chặn IDOR.
 - Customer chỉ nhận metadata/download/preview output khi job đang `COMPLETED`; chuyển lại `REVIEW` thu hồi quyền ngay. Admin vẫn xem được output nháp.
 - Mọi download đi qua API authorization và streaming response; không public `/data`.
@@ -205,7 +209,7 @@ Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được v�
 - Filename được lấy basename, chuẩn hóa; đường dẫn lưu sinh ngẫu nhiên, không ghép path từ request.
 - Kiểm extension, MIME, magic bytes, file rỗng và giới hạn kích thước trong lúc stream.
 - Upload đọc theo chunk 1 MiB qua API bất đồng bộ của `UploadFile`; transaction SQLite tạo job kết thúc trước khi copy file lớn.
-- SQLite dùng WAL, foreign keys và busy timeout 5 giây; login giới hạn 5 lần thất bại/phút/IP trong memory của single backend.
+- SQLite dùng WAL, foreign keys và busy timeout 5 giây; giới hạn login theo IP và upload theo tài khoản được lưu bền vững trong database.
 - Output chỉ hoàn thành khi đủ Excel và annotated PDF; ghi chú nội bộ tách khỏi ghi chú khách hàng.
 - Không log token, cookie, password hay nội dung PDF; response không lộ hash/path/stack trace.
 

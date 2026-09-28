@@ -1,10 +1,10 @@
 import argparse
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.auth.security import hash_password
 from app.core.database import Base, SessionLocal, engine
-from app.models.entities import User, UserRole
+from app.models.entities import User, UserRole, UserSession
 
 
 def main():
@@ -35,6 +35,7 @@ def main():
             if not user:
                 raise SystemExit("Không tìm thấy người dùng")
             user.password_hash = hash_password(args.password)
+            db.execute(delete(UserSession).where(UserSession.user_id == user.id))
         db.commit()
         print("Thành công")
 

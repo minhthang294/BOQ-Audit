@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -49,6 +49,23 @@ class User(Base):
     def username(self) -> str:
         # Giữ tên cột legacy để database V1 hiện hữu không cần migration phá vỡ.
         return self.email
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RateLimitEvent(Base):
+    __tablename__ = "rate_limit_events"
+    __table_args__ = (Index("ix_rate_limit_scope_key_time", "scope", "key_hash", "occurred_at"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope: Mapped[str] = mapped_column(String(32))
+    key_hash: Mapped[str] = mapped_column(String(64))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Job(Base):

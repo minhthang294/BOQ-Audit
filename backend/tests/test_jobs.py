@@ -1,6 +1,7 @@
 from conftest import login
 from app.core.config import get_settings
 from app.core.database import SessionLocal
+from app.main import upload_limiter
 from sqlalchemy import text
 
 from app.models.entities import Job, JobStatus
@@ -258,7 +259,13 @@ def test_sqlite_pragmas_and_health(client):
         assert db.execute(text("PRAGMA journal_mode")).scalar().lower() == "wal"
     health = client.get("/api/health")
     assert health.status_code == 200
-    assert health.json() == {"status": "healthy", "database": "ok", "storage": "ok"}
+    payload = health.json()
+    assert payload["status"] == "healthy"
+    assert payload["database"] == "ok"
+    assert payload["storage"] == "ok"
+    assert payload["storage_used_mb"] >= 0
+    assert payload["storage_free_mb"] > 0
+    assert payload["storage_quota_mb"] == get_settings().max_total_storage_mb
 
 
 def test_optional_narrative_upload_and_authorized_download(client, pdf_bytes):
@@ -303,3 +310,31 @@ def test_narrative_is_optional_and_invalid_document_rolls_back(owner_client, pdf
     assert invalid.status_code == 415
     with SessionLocal() as db:
         assert db.query(Job).count() == 1
+
+
+
+def test_upload_rate_limit_is_enforced_before_body_processing(owner_client, pdf_bytes):
+    original_limit = upload_limiter.limit
+    upload_limiter.limit = 1
+    try:
+        assert create_job(owner_client, pdf_bytes).status_code == 201
+        blocked = create_job(owner_client, pdf_bytes)
+        assert blocked.status_code == 429
+        assert blocked.headers["retry-after"] == str(upload_limiter.window_seconds)
+    finally:
+        upload_limiter.limit = original_limit
+
+
+def test_global_storage_quota_blocks_upload_and_marks_health_unhealthy(owner_client, pdf_bytes):
+    settings = get_settings()
+    original_quota = settings.max_total_storage_mb
+    settings.max_total_storage_mb = 0
+    try:
+        blocked = create_job(owner_client, pdf_bytes)
+        assert blocked.status_code == 507
+        assert "dung lượng" in blocked.json()["detail"]
+        health = owner_client.get("/api/health")
+        assert health.status_code == 503
+        assert health.json()["storage"] == "full"
+    finally:
+        settings.max_total_storage_mb = original_quota

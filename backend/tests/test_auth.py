@@ -1,4 +1,6 @@
-from conftest import login
+from conftest import ASGIClient, login
+from app.core.database import SessionLocal
+from app.models.entities import RateLimitEvent, UserSession
 
 
 def test_login_success_and_me(client):
@@ -23,6 +25,24 @@ def test_login_rate_limit_after_failed_attempts(client):
     limited = login(client, "owner", "wrong-password")
     assert limited.status_code == 429
     assert limited.headers["retry-after"] == "60"
+    with SessionLocal() as db:
+        assert db.query(RateLimitEvent).filter(RateLimitEvent.scope == "login").count() == 5
+
+
+def test_logout_revokes_copied_jwt(client):
+    response = login(client, "owner", "owner-pass-123")
+    assert response.status_code == 200
+    copied_token = client.cookies.get("session")
+    with SessionLocal() as db:
+        assert db.query(UserSession).count() == 1
+
+    assert client.post("/api/auth/logout").status_code == 200
+    replay = ASGIClient()
+    replay.cookies.set("session", copied_token)
+    assert replay.get("/api/auth/me").status_code == 401
+    with SessionLocal() as db:
+        assert db.query(UserSession).count() == 0
+
 
 
 def test_unauthenticated_access_rejected(client):

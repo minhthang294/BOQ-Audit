@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import get_settings
+from app.core.storage_guard import require_upload_capacity
 
 PDF_MIMES = {"application/pdf", "application/x-pdf", "application/octet-stream"}
 NARRATIVE_MIMES = PDF_MIMES | {
@@ -43,6 +44,7 @@ def validate_upload(file: UploadFile, allowed_extensions: set[str], allowed_mime
 
 async def save_upload(file: UploadFile, destination: Path, expected_kind: str) -> int:
     settings = get_settings()
+    require_upload_capacity()
     destination.parent.mkdir(parents=True, exist_ok=True)
     max_bytes = settings.max_upload_mb * 1024 * 1024
     size = 0
@@ -53,6 +55,8 @@ async def save_upload(file: UploadFile, destination: Path, expected_kind: str) -
                 size += len(chunk)
                 if size > max_bytes:
                     raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"Tệp vượt quá {settings.max_upload_mb} MB")
+                if size == len(chunk) or size % (16 * 1024 * 1024) < len(chunk):
+                    require_upload_capacity(len(chunk))
                 if len(header) < 8:
                     header += chunk[: 8 - len(header)]
                 target.write(chunk)

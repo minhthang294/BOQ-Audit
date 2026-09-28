@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:////data/database/boq.db"
     data_dir: Path = Path("/data")
     max_upload_mb: int = Field(default=500, ge=1, le=2048)
+    max_total_storage_mb: int = Field(default=51200, ge=1024)
+    min_free_disk_mb: int = Field(default=2048, ge=256)
+    upload_rate_limit: int = Field(default=10, ge=1, le=1000)
+    upload_rate_window_seconds: int = Field(default=3600, ge=60, le=86400)
+    login_rate_limit: int = Field(default=5, ge=1, le=100)
+    login_rate_window_seconds: int = Field(default=60, ge=10, le=3600)
     frontend_url: str = "http://localhost:3000"
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
