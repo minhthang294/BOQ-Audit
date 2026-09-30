@@ -12,3 +12,8 @@ export interface Job {
   created_at: string; started_at?: string; completed_at?: string; updated_at: string; outputs: JobOutput[];
   estimate_input?: EstimateInput | null; narrative_input?: NarrativeInput | null; user?: User;
 }
+export interface CodexUsageWindow { used_percent: number; remaining_percent: number; resets_at?: number | null; window_duration_minutes?: number | null }
+export interface CodexUsage {
+  available: boolean; plan_type?: string | null; ordinary_usage_allowed?: boolean | null;
+  primary?: CodexUsageWindow | null; secondary?: CodexUsageWindow | null; checked_at: string;
+}

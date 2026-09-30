@@ -5,14 +5,17 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.telegram import notify_pdf_upload
 from app.models.entities import Job, JobEstimateInput, JobNarrativeInput, JobStatus, User, UserRole, utcnow
-from app.schemas.api import CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
+from app.schemas.api import CodexUsageResponse, CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
 from app.storage.files import EXCEL_MIMES, NARRATIVE_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
+from app.services.audit_runner import run_audit_job
+from app.services.codex_usage import get_codex_usage
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger("boq-audit.jobs")
@@ -70,6 +73,11 @@ async def list_jobs(user: User = Depends(current_user), db: Session = Depends(ge
     )
     items = list(db.scalars(query).all())
     return {"items": [visible_customer_job(item) for item in items], "total": len(items)}
+
+
+@router.get("/codex-usage", response_model=CodexUsageResponse)
+async def codex_usage(_: User = Depends(current_user)):
+    return await run_in_threadpool(get_codex_usage)
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -171,6 +179,7 @@ async def create_job(
             )
         db.commit()
         saved_job = owned_job(db, job_code, user)
+        background_tasks.add_task(run_audit_job, job_id)
         background_tasks.add_task(notify_pdf_upload, job_code, clean_project_name, display_name, user.email)
         return saved_job
     except Exception:
@@ -185,6 +194,44 @@ async def create_job(
             db.delete(incomplete_job)
             db.commit()
         raise
+
+
+@router.post("/{job_code}/retry", response_model=JobResponse)
+async def retry_job(
+    job_code: str,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    job = owned_job(db, job_code, user)
+    if job.status != JobStatus.FAILED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Chỉ có thể thử lại hồ sơ bị lỗi")
+    active_jobs = db.scalar(
+        select(func.count(Job.id)).where(
+            Job.user_id == user.id,
+            Job.status.in_(ACTIVE_JOB_STATUSES),
+        )
+    ) or 0
+    if active_jobs >= MAX_ACTIVE_JOBS_PER_USER:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Bạn đang có 2 hồ sơ được xử lý. Vui lòng chờ một hồ sơ hoàn thành trước khi thử lại.")
+
+    output_dir = (get_settings().jobs_dir / job.job_code / "output").resolve()
+    jobs_root = get_settings().jobs_dir.resolve()
+    if output_dir.parent != (jobs_root / job.job_code).resolve():
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Đường dẫn kết quả không hợp lệ")
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    job.outputs.clear()
+    job.status = JobStatus.PROCESSING
+    job.started_at = utcnow()
+    job.completed_at = None
+    job.admin_notes = None
+    job.critical_errors = 0
+    job.warnings = 0
+    db.commit()
+    background_tasks.add_task(run_audit_job, job.id)
+    return owned_job(db, job_code, user)
 
 
 @router.get("/{job_code}/narrative/download")

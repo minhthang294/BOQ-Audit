@@ -19,7 +19,7 @@ function UploadBox({ jobCode, type, label, existing, onDone }: {jobCode: string;
     catch (err) { setError(err instanceof Error ? err.message : "Không thể upload"); }
     finally { setBusy(false); }
   }
-  return <div className="rounded-lg border border-line p-4"><p className="font-semibold">{label}</p>{existing && <p className="mt-1 text-sm text-emerald-700">✓ {existing.original_filename} ({fileSize(existing.file_size)})</p>}{error && <p className="mt-2 text-xs text-red-700">{error}</p>}<div className="mt-3 flex flex-col gap-2 sm:flex-row"><input ref={inputRef} type="file" accept={type === "ANNOTATED_PDF" ? ".pdf,application/pdf" : ".xlsx,.xls"} className="text-sm" /><button type="button" onClick={upload} disabled={busy} className="btn-secondary shrink-0">{busy ? "Đang tải…" : existing ? "THAY TỆP" : "TẢI LÊN"}</button></div></div>;
+  return <div className="rounded-lg border border-line p-4"><p className="font-semibold">{label}</p>{existing && <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-emerald-700"><span>✓ {existing.original_filename} ({fileSize(existing.file_size)})</span><a className="font-semibold underline" href={`/api/jobs/${jobCode}/outputs/${existing.id}/download`}>TẢI FILE</a></div>}{error && <p className="mt-2 text-xs text-red-700">{error}</p>}<div className="mt-3 flex flex-col gap-2 sm:flex-row"><input ref={inputRef} type="file" accept={type === "ANNOTATED_PDF" ? ".pdf,application/pdf" : ".xlsx,.xls"} className="text-sm" /><button type="button" onClick={upload} disabled={busy} className="btn-secondary shrink-0">{busy ? "Đang tải…" : existing ? "THAY TỆP" : "TẢI LÊN"}</button></div></div>;
 }
 
 export default function AdminJobDetail({ params }: {params: Promise<{job_code: string}>}) {

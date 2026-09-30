@@ -109,3 +109,19 @@ class AdminUpdateJob(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class CodexUsageWindowResponse(BaseModel):
+    used_percent: int = Field(ge=0, le=100)
+    remaining_percent: int = Field(ge=0, le=100)
+    resets_at: int | None = None
+    window_duration_minutes: int | None = None
+
+
+class CodexUsageResponse(BaseModel):
+    available: bool
+    plan_type: str | None = None
+    ordinary_usage_allowed: bool | None = None
+    primary: CodexUsageWindowResponse | None = None
+    secondary: CodexUsageWindowResponse | None = None
+    checked_at: datetime

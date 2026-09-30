@@ -3,8 +3,13 @@ services:
     build: ./backend
     restart: unless-stopped
     env_file: .env
+    environment:
+      CODEX_HOME: /root/.codex
     volumes:
       - ./data:/data
+      - codex_home:/root/.codex
+      # Mount the complete skill bundle read-only; set this path per deployment host.
+      - ${BOQ_AUDIT_SKILL_HOST_PATH:-/home/thangpham/.agents/skills/boq-audit}:/opt/codex/skills/boq-audit:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 15s
@@ -58,3 +63,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  codex_home:

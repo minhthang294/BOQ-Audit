@@ -55,6 +55,14 @@ Tạo thêm admin bằng cách thêm `--role ADMIN`. Đổi password admin hiệ
 docker compose exec backend python -m app.cli set-password --username admin --password 'mat-khau-moi-rat-manh'
 ```
 
+## Automatic Codex BOQ audit
+
+After a customer upload is stored, the backend starts an asynchronous audit for that job. The worker invokes `codex exec --json --approve-for-me`, explicitly requires the `boq-audit` skill on every run, writes audit artifacts under `data/jobs/<job-code>/output`, and updates the job status to `COMPLETED` or `FAILED`. The customer page polls `GET /api/jobs/{job_code}` every five seconds, so status and outputs come from the backend rather than simulated frontend progress.
+
+The backend runtime must have the Codex CLI available and the complete skill bundle installed at `BOQ_AUDIT_SKILL_PATH`. The supplied Dockerfile installs the CLI, while Compose mounts the host directory from `BOQ_AUDIT_SKILL_HOST_PATH` read-only. Set both values in `.env`; the default container skill path is `/opt/codex/skills/boq-audit/SKILL.md`. Authenticate Codex once with ChatGPT in the persistent Docker credential volume before starting audits: `sudo docker compose run --rm --no-deps backend codex login`. Do not set `OPENAI_API_KEY`; this deployment intentionally uses the ChatGPT login flow. The worker treats a missing skill or Codex executable as a failed job and records the reason in the admin notes.
+
+Because uploaded drawings are untrusted engineering evidence, run the backend worker in an isolated container/job environment with a dedicated per-job workspace, no production credentials, and appropriate CPU, memory, timeout and disk limits.
+
 ## Telegram notifications for customer PDF uploads
 
 Create a bot with Telegram's BotFather, send the bot a message (or add it to your target group), and obtain that conversation's chat ID from the bot's `getUpdates` API. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`, then restart the backend with `docker compose up -d --build backend`. Both values are required; leaving either blank disables notifications. A message with the job code, project, customer login, and PDF filename is sent after a successful upload. Telegram delivery failures are logged and do not affect the customer's upload.

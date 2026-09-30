@@ -27,3 +27,4 @@ label { @apply mb-2 block text-sm font-semibold text-slate-700; }
 .rich-text-content li + li { @apply mt-1; }
 .rich-text-content blockquote { @apply my-2 border-l-4 border-slate-300 pl-3 text-slate-600; }
 .rich-text-content a { @apply text-brand underline; }
+.customer-message-scroll { @apply max-h-[min(52vh,32rem)] overflow-y-auto overscroll-contain pr-2; }

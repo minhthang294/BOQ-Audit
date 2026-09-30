@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Self
 
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,11 +29,16 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     cookie_secure: bool = False
     session_expire_hours: int = Field(default=12, ge=1, le=168)
+    codex_command: str = "codex"
+    codex_timeout_seconds: int = Field(default=6 * 60 * 60, ge=60, le=24 * 60 * 60)
+    codex_usage_cache_seconds: int = Field(default=60, ge=15, le=3600)
+    codex_usage_query_timeout_seconds: int = Field(default=15, ge=3, le=60)
+    boq_audit_skill_path: Path = Path("/opt/codex/skills/boq-audit/SKILL.md")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")
-    def validate_production_security(self) -> "Settings":
+    def validate_production_security(self) -> Self:
         if self.app_env.strip().lower() != "production":
             return self
 
