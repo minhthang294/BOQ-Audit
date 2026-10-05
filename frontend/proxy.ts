@@ -4,7 +4,7 @@ export async function proxy(request: NextRequest) {
   const backend = process.env.BACKEND_INTERNAL_URL || "http://localhost:8000";
   try {
     const response = await fetch(`${backend}/api/auth/me`, { headers: { cookie: request.headers.get("cookie") || "" }, cache: "no-store" });
-    if (!response.ok) return NextResponse.redirect(new URL("/login", request.url));
+    if (!response.ok) return NextResponse.redirect(new URL(response.headers.get("X-Session-Reason") === "replaced" ? "/login?replaced=1" : "/login?expired=1", request.url));
     const user = await response.json();
     if (request.nextUrl.pathname.startsWith("/admin") && user.role !== "ADMIN") return NextResponse.redirect(new URL("/", request.url));
     if (!request.nextUrl.pathname.startsWith("/admin") && user.role === "ADMIN") return NextResponse.redirect(new URL("/admin", request.url));

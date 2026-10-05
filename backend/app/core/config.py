@@ -34,11 +34,18 @@ class Settings(BaseSettings):
     codex_usage_cache_seconds: int = Field(default=60, ge=15, le=3600)
     codex_usage_query_timeout_seconds: int = Field(default=15, ge=3, le=60)
     boq_audit_skill_path: Path = Path("/opt/codex/skills/boq-audit/SKILL.md")
+    chat_gateway_url: str = "http://chat:8010"
+    chat_gateway_token: str = ""
+    chat_timeout_seconds: int = Field(default=120, ge=10, le=300)
+    chat_rate_limit: int = Field(default=20, ge=1, le=100)
+    chat_rate_window_seconds: int = Field(default=3600, ge=60, le=86400)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")
     def validate_production_security(self) -> Self:
+        if self.chat_gateway_token and len(self.chat_gateway_token) < 32:
+            raise ValueError("CHAT_GATEWAY_TOKEN must contain at least 32 characters")
         if self.app_env.strip().lower() != "production":
             return self
 

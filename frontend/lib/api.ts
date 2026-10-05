@@ -1,7 +1,7 @@
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api${path}`, { ...options, credentials: "include" });
   if (response.status === 401 && typeof window !== "undefined" && !location.pathname.startsWith("/login")) {
-    location.href = "/login?expired=1";
+    location.href = response.headers.get("X-Session-Reason") === "replaced" ? "/login?replaced=1" : "/login?expired=1";
     throw new Error("Phiên đăng nhập đã hết hạn");
   }
   if (!response.ok) {
@@ -26,3 +26,8 @@ export function fileSize(bytes: number) {
   return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null) return "Chưa có số liệu";
+  const total = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(total / 3600)} giờ ${Math.floor(total % 3600 / 60)} phút ${total % 60} giây`;
+}

@@ -86,6 +86,9 @@ async def update_job(job_code: str, payload: AdminUpdateJob, _: User = Depends(a
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Dùng thao tác hoàn thành hồ sơ")
     for key, value in values.items():
         setattr(job, key, value)
+    if payload.status is not None:
+        from app.models.entities import utcnow
+        job.completed_at = utcnow() if payload.status == JobStatus.FAILED else None
     if payload.status == JobStatus.PROCESSING and job.started_at is None:
         from app.models.entities import utcnow
         job.started_at = utcnow()
@@ -192,7 +195,8 @@ async def complete_job(job_code: str, _: User = Depends(admin_user), db: Session
             else "Cần đủ báo cáo Excel và PDF đánh dấu trước khi hoàn thành"
         )
         raise HTTPException(status.HTTP_409_CONFLICT, message)
+    if job.status != JobStatus.COMPLETED:
+        job.completed_at = utcnow()
     job.status = JobStatus.COMPLETED
-    job.completed_at = utcnow()
     db.commit()
     return find_job(db, job_code)

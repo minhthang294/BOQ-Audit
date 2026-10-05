@@ -21,7 +21,7 @@ def test_create_get_and_idor(client, pdf_bytes):
     assert created.status_code == 201
     code = created.json()["job_code"]
     assert code == "BOQ-000001"
-    assert created.json()["status"] == "PROCESSING"
+    assert created.json()["status"] == "SUBMITTED"
     assert client.get(f"/api/jobs/{code}").status_code == 200
     assert client.get(f"/api/jobs/{code}/input/download").content.startswith(b"%PDF")
     viewed = client.get(f"/api/jobs/{code}/input/view")

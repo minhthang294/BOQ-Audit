@@ -16,6 +16,7 @@ os.environ.update(
         "DEMO_USERNAME": "owner",
         "DEMO_PASSWORD": "owner-pass-123",
         "MAX_UPLOAD_MB": "1",
+        "MIN_FREE_DISK_MB": "256",
     }
 )
 
@@ -27,7 +28,9 @@ from app.models.entities import User, UserRole
 
 
 @pytest.fixture(autouse=True)
-def clean_database():
+def clean_database(monkeypatch):
+    # API checks never invoke a real authenticated audit or consume provider quota.
+    monkeypatch.setattr("app.api.jobs.run_audit_job", lambda _: None)
     login_limiter.reset()
     TEST_DATA.mkdir(parents=True, exist_ok=True)
     Base.metadata.drop_all(engine)

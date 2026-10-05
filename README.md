@@ -1,5 +1,7 @@
 # BOQ Audit Portal V1
 
+New session limits, durable audit timing and SBTech AI project chat: see [feature rollout](FEATURE_ROLLOUT.md) for setup, migration, verification and deployment steps.
+
 Cổng web tối giản cho khách hàng gửi PDF bản vẽ, tùy chọn đính kèm dự toán Excel và thuyết minh PDF/Word, theo dõi trạng thái và nhận báo cáo Excel/PDF đánh dấu. Việc tra soát chuyên môn ở V1 được admin thực hiện thủ công ngoài hệ thống; ứng dụng chỉ quản lý quy trình và tệp.
 
 ## Kiến trúc
@@ -42,6 +44,8 @@ Mở `http://localhost`. Không dùng password mẫu trong môi trường có ng
 ## Tài khoản
 
 Lần khởi động đầu tiên backend tạo admin từ `ADMIN_*`. Customer demo chỉ được tạo khi `DEMO_PASSWORD` được đặt rõ ràng; để trống thì không seed demo (đây là mặc định production). Tên đăng nhập là chuỗi không có khoảng trắng, không cần là email. Seed không ghi đè tài khoản đã tồn tại.
+
+Admin mở **Tài khoản** (`/admin/users`) để thêm, sửa, khóa hoặc xóa tài khoản khách hàng. Admin tự đặt mật khẩu tối thiểu 12 ký tự; để trống mật khẩu khi sửa để giữ mật khẩu hiện tại. Đổi mật khẩu, tên đăng nhập hoặc khóa tài khoản thu hồi phiên đăng nhập. Chỉ xóa được tài khoản chưa có hồ sơ; tài khoản có hồ sơ dùng chức năng khóa để giữ dữ liệu. Trang này không sửa/xóa tài khoản admin. Mật khẩu lưu dưới dạng hash và không thể xem lại. Nếu xóa customer demo, hãy bỏ `DEMO_PASSWORD` trong cấu hình để tránh seed lại khi khởi động.
 
 Tạo customer mới:
 
@@ -110,6 +114,7 @@ docker compose up -d
 - `GET /api/jobs/{job_code}/outputs/{output_id}/download`
 - `GET /api/jobs/{job_code}/outputs/{output_id}/view`
 - `GET /api/admin/jobs`, `GET|PATCH /api/admin/jobs/{job_code}`
+- `GET|POST /api/admin/users`, `PATCH|DELETE /api/admin/users/{user_id}` (chỉ admin; chỉ quản lý customer)
 - `GET /api/admin/jobs/{job_code}/input/download`
 - `GET /api/admin/jobs/{job_code}/estimate/download`
 - `GET /api/admin/jobs/{job_code}/narrative/download`
@@ -176,6 +181,14 @@ boq.example.com {
         max_size 1520MB
     }
 
+    @chatMessages {
+        method POST
+        path /api/jobs/*/chat/messages
+    }
+    request_body @chatMessages {
+        max_size 16KB
+    }
+
     @api path /api/*
     handle @api {
         reverse_proxy backend:8000
@@ -225,5 +238,5 @@ Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `
 
 - SQLite phù hợp một backend instance và tải MVP; không chạy nhiều replica ghi đồng thời.
 - MIME/magic-byte validation ngăn lỗi phổ biến nhưng không thay thế malware scanning chuyên dụng.
-- Chưa có self-registration, email notification, audit-history bất biến hay quy trình quên mật khẩu; tài khoản do admin tạo bằng CLI.
-- Không có xử lý tự động nội dung hồ sơ. Điểm mở rộng dự kiến là worker gọi cùng lớp dữ liệu/API để nhận input và tạo output.
+- Chưa có self-registration, email notification, audit-history bất biến hay quy trình quên mật khẩu; tài khoản khách hàng do admin tạo trên trang Tài khoản hoặc CLI.
+- Audit tự động chạy bằng worker Codex trong tiến trình backend; restart cần chờ audit hoàn tất hoặc thử lại hồ sơ bị gián đoạn.

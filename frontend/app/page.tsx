@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { StatusBadge } from "@/components/StatusBadge";
-import { api, formatDate } from "@/lib/api";
+import { api, formatDate, formatDuration } from "@/lib/api";
 import { Job, User } from "@/types";
 
 export default function Dashboard() {
@@ -24,7 +24,7 @@ export default function Dashboard() {
     <section><div className="mb-4 flex items-end justify-between"><div><p className="eyebrow">Quản lý hồ sơ</p><h2 className="mt-1 text-xl font-extrabold tracking-tight">Hồ sơ gần đây</h2></div><span className="text-sm text-slate-500">{jobs.length} hồ sơ</span></div>{error && <p className="error">{error}</p>}
       {!error && jobs.length === 0 && <div className="card text-center"><p className="font-semibold">Chưa có hồ sơ nào</p><p className="mt-1 text-sm text-slate-500">Tạo hồ sơ đầu tiên để bắt đầu tra soát.</p></div>}
       <div className="space-y-3">{jobs.map(job => <Link key={job.job_code} href={`/jobs/${job.job_code}`} className="card group flex flex-col justify-between gap-3 transition duration-200 hover:-translate-y-0.5 hover:ring-cyan-200 sm:flex-row sm:items-center">
-        <div className="flex items-center gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-lg font-bold text-cyan-800 ring-1 ring-cyan-100">PDF</span><div><p className="font-mono text-xs font-bold tracking-wide text-cyan-800">{job.job_code}</p><p className="mt-1 font-bold text-slate-800 transition group-hover:text-brand">{job.project_name}</p><p className="mt-1 text-xs text-slate-500">Gửi lúc {formatDate(job.created_at)}</p></div></div><div className="flex items-center justify-between gap-4"><StatusBadge status={job.status} /><span className="text-xl text-slate-300 transition group-hover:translate-x-1 group-hover:text-brand">›</span></div>
+        <div className="flex items-center gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-lg font-bold text-cyan-800 ring-1 ring-cyan-100">PDF</span><div><p className="font-mono text-xs font-bold tracking-wide text-cyan-800">{job.job_code}</p><p className="mt-1 font-bold text-slate-800 transition group-hover:text-brand">{job.project_name}</p><p className="mt-1 text-xs text-slate-500">Gửi lúc {formatDate(job.created_at)}</p><p className="mt-1 text-xs text-slate-500">Tổng: {formatDuration(job.turnaround_seconds)} · AI: {formatDuration(job.ai_processing_seconds == null ? null : job.ai_processing_seconds + (job.current_attempt_seconds || 0))}{!job.ai_timing_complete && job.audit_runs.length > 0 ? " (chưa đủ)" : ""}</p></div></div><div className="flex items-center justify-between gap-4"><StatusBadge status={job.status} /><span className="text-xl text-slate-300 transition group-hover:translate-x-1 group-hover:text-brand">›</span></div>
       </Link>)}</div>
     </section>
   </Shell>;

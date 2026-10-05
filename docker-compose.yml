@@ -39,6 +39,44 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  chat:
+    build: ./chat
+    restart: unless-stopped
+    environment:
+      CHAT_GATEWAY_TOKEN: ${CHAT_GATEWAY_TOKEN:-}
+      CHAT_TIMEOUT_SECONDS: ${CHAT_TIMEOUT_SECONDS:-120}
+    volumes:
+      - chat_auth:/auth:ro
+      - chat_sessions:/sessions
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Copy only login credentials; the chat runtime never mounts the audit home or portal data.
+  chat-auth-init:
+    image: python:3.12-slim
+    profiles: [chat-setup]
+    network_mode: none
+    volumes:
+      - codex_home:/source:ro
+      - chat_auth:/auth
+    command: ["python", "-c", "import os, shutil; shutil.copyfile('/source/auth.json', '/auth/auth.json'); os.chown('/auth/auth.json', 10001, 10001); os.chmod('/auth/auth.json', 0o600)"]
+
   caddy:
     image: caddy:2.10-alpine
     restart: unless-stopped
@@ -64,3 +102,5 @@ volumes:
   caddy_data:
   caddy_config:
   codex_home:
+  chat_auth:
+  chat_sessions:
