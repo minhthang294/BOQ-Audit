@@ -21,7 +21,7 @@ export default function AdminUsers() {
   function edit(user: AdminUser) {
     setEditing(user.id); setForm({ name: user.name, username: user.username, password: "", is_active: user.is_active });
     setError(""); setMessage("");
-    document.getElementById("account-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("account-form")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   }
   async function save(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError(""); setMessage("");

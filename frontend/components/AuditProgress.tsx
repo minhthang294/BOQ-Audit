@@ -45,10 +45,11 @@ export function AuditProgress({ job, compact = false }: { job: Job; compact?: bo
     <ol className="mt-5 grid gap-3 sm:grid-cols-2">
       {stages.map((stage, index) => {
         const done = complete || index < current;
-        const active = !complete && index === current;
-        return <li key={stage} className={`flex min-h-11 items-start gap-3 rounded-lg px-3 py-2 text-sm ${active ? failed ? "bg-red-50 text-red-900" : "bg-cyan-50 text-cyan-950" : "text-slate-600"}`}>
-          <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-cyan-800 text-white" : active ? failed ? "border-2 border-red-500 bg-white text-red-700" : "border-2 border-cyan-700 bg-white text-cyan-800" : "border border-slate-300 bg-white text-slate-400"}`}>{done ? "✓" : index + 1}</span>
-          <span className={active ? "font-semibold" : ""}>{stage}</span>
+        const active = !complete && !failed && job.status !== "WAITING_FOR_INFO" && index === current;
+        const state = done ? "Đã xong" : active ? "Đang thực hiện" : "Chưa bắt đầu";
+        return <li key={stage} className={`flex min-h-11 items-start gap-3 rounded-lg px-3 py-2 text-sm ${active ? "bg-cyan-50 text-cyan-950" : "text-slate-600"}`}>
+          <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-cyan-800 text-white" : active ? "border-2 border-cyan-700 bg-white text-cyan-800" : "border border-slate-300 bg-white text-slate-400"}`}>{done ? "✓" : index + 1}</span>
+          <span className={active ? "font-semibold" : ""}>{stage}<span className="sr-only"> — {state}</span></span>
         </li>;
       })}
     </ol>

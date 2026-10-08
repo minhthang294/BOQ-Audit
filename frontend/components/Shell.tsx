@@ -15,7 +15,7 @@ export function Shell({ children, admin = false, wide = false }: { children: Rea
       <div className={`mx-auto flex min-h-16 items-center justify-between gap-4 px-4 sm:px-6 ${wide ? "max-w-[1600px]" : "max-w-6xl"}`}>
         <Link href={admin ? "/admin" : "/"} className="focus-ring flex min-h-11 items-center gap-3 rounded-lg">
           <Image src="/sbtech-logo.png" alt="SBTech" width={54} height={36} priority className="h-9 w-[54px] object-contain" />
-          <span><span className="block text-base font-extrabold tracking-tight text-slate-950">{admin ? "BOQ Admin" : "BOQ Audit"}</span><span className="hidden text-[11px] font-medium text-slate-500 sm:block">SBTech Portal</span></span>
+          <span className="hidden sm:block"><span className="block text-base font-extrabold tracking-tight text-slate-950">{admin ? "BOQ Admin" : "BOQ Audit"}</span><span className="block text-[11px] font-medium text-slate-500">SBTech Portal</span></span>
         </Link>
         <nav aria-label="Điều hướng chính" className="flex items-center gap-1">{admin && <><Link href="/admin" className={navClass(pathname === "/admin" || pathname.startsWith("/admin/jobs"))}>Hồ sơ</Link><Link href="/admin/users" className={navClass(pathname.startsWith("/admin/users"))}>Tài khoản</Link></>}{!admin && <CompletionNotifications />}<button onClick={logout} className={navClass(false)}>Đăng xuất</button></nav>
       </div>

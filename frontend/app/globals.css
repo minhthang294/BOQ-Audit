@@ -18,7 +18,7 @@
 body {
   @apply min-h-screen text-ink antialiased;
   background: var(--canvas);
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
 }
 input, textarea, select { @apply w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-base outline-none transition duration-200 placeholder:text-slate-400 hover:border-slate-400 focus:border-cyan-700 focus:ring-4 focus:ring-cyan-100/70 sm:text-sm; }
 label { @apply mb-2 block text-sm font-semibold text-slate-700; }
@@ -42,3 +42,7 @@ a { text-underline-offset: 3px; }
 .rich-text-content blockquote { @apply my-2 border-l-4 border-slate-300 pl-3 text-slate-600; }
 .rich-text-content a { @apply text-brand underline; }
 .customer-message-scroll { @apply max-h-[min(52vh,32rem)] overflow-y-auto overscroll-contain pr-2; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
