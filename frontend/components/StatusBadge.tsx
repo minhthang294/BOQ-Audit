@@ -7,7 +7,7 @@ export const statusText: Record<JobStatus, string> = {
 
 const colors: Record<JobStatus, string> = {
   SUBMITTED: "bg-sky-50 text-sky-900 border-sky-300", PROCESSING: "bg-amber-50 text-amber-900 border-amber-300",
-  WAITING_FOR_INFO: "bg-orange-50 text-orange-900 border-orange-300", REVIEW: "bg-orange-50 text-orange-900 border-orange-300",
+  WAITING_FOR_INFO: "bg-amber-50 text-amber-900 border-amber-300", REVIEW: "bg-brand-soft text-brand-strong border-brand",
   COMPLETED: "bg-emerald-50 text-emerald-800 border-emerald-200", FAILED: "bg-red-50 text-red-800 border-red-200",
 };
 
