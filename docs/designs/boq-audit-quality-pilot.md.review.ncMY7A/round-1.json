@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "round": 1,
+  "document": "/home/thangpham/dev/BOQ Audit/docs/designs/boq-audit-quality-pilot.md",
+  "quality_score": 8,
+  "dimensions": {
+    "completeness": "ISSUES",
+    "consistency": "PASS",
+    "clarity": "ISSUES",
+    "scope": "PASS",
+    "feasibility": "PASS"
+  },
+  "findings": [
+    {
+      "id": "R1-1",
+      "dimension": "clarity",
+      "problem": "Step 3 defines precision as supported confirmed findings divided by all confirmed error findings, but a false alarm is an independently rejected error claim. It is unclear whether false alarms remain in this denominator; excluding them would make precision 100% whenever any supported finding exists.",
+      "remedy": "Define precision explicitly as supported unique findings / (supported unique findings + false-alarm unique findings) within scored scope, and state that unresolved and out-of-scope findings are excluded and reported separately."
+    },
+    {
+      "id": "R1-2",
+      "dimension": "completeness",
+      "problem": "The corpus deliberately includes missing or ambiguous evidence, and the success bar requires that ambiguity remain unresolved, but the worksheet only classifies reported issues and known reference errors. It does not evaluate an unsupported all-clear or completion claim in the report narrative, or an omitted limitation when a required check was impossible. Such an ambiguous package could report no issues, receive N/A metrics, and escape the stated ambiguity requirement.",
+      "remedy": "Before running each ambiguous package, record the checks that cannot be resolved and the limitation or uncertainty the report must communicate. Adjudicate narrative coverage and all-clear claims as well as issue rows, and make an unsupported claim of completed verification or a missing required limitation fail the package's readiness bar."
+    },
+    {
+      "id": "R1-3",
+      "dimension": "completeness",
+      "problem": "Success Criteria requires only a human usability record before wider use. It specifies no disposition for zero findings to verify or for an architect who fails every source-location or interpretation task, although the problem statement commits to checking the architect's ability to verify findings before expansion. Merely recording those outcomes can therefore satisfy the stated readiness requirements.",
+      "remedy": "State the pilot usability decision rule before observing the architect: a zero-task exercise is inconclusive, and unresolved failures to locate evidence or reach the adjudicated interpretation keep the pilot limited until the failures are repaired and reassessed. Define what successful independent verification must demonstrate without claiming statistical generalizability."
+    }
+  ],
+  "prior": []
+}

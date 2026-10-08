@@ -2,7 +2,7 @@ import { JobStatus } from "@/types";
 
 export const statusText: Record<JobStatus, string> = {
   SUBMITTED: "Đã nhận hồ sơ", PROCESSING: "Đang rà soát", WAITING_FOR_INFO: "Cần bổ sung hồ sơ",
-  REVIEW: "Đang kiểm tra kết quả", COMPLETED: "Hoàn thành", FAILED: "Có lỗi xử lý",
+  REVIEW: "Đang kiểm tra kết quả", COMPLETED: "Đã có kết quả", FAILED: "Có lỗi xử lý",
 };
 
 const colors: Record<JobStatus, string> = {

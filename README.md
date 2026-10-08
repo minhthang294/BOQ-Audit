@@ -2,7 +2,13 @@
 
 New session limits, durable audit timing and SBTech AI project chat: see [feature rollout](FEATURE_ROLLOUT.md) for setup, migration, verification and deployment steps.
 
-Cổng web tối giản cho khách hàng gửi PDF bản vẽ, tùy chọn đính kèm dự toán Excel và thuyết minh PDF/Word, theo dõi trạng thái và nhận báo cáo Excel/PDF đánh dấu. Việc tra soát chuyên môn ở V1 được admin thực hiện thủ công ngoài hệ thống; ứng dụng chỉ quản lý quy trình và tệp.
+Cổng web nội bộ để người dùng gửi PDF bản vẽ, tùy chọn đính kèm dự toán Excel và thuyết minh PDF/Word, theo dõi trạng thái và nhận báo cáo Excel/PDF đánh dấu. Hệ thống dùng Codex để tạo báo cáo; người có chuyên môn vẫn phải đối chiếu nội dung trước khi sử dụng.
+
+### Pilot chất lượng BOQ
+
+`COMPLETED` nghĩa là tiến trình/tệp đầu ra hoàn tất theo luồng hiện tại; trạng thái này **không xác nhận chất lượng, độ chính xác hay độ đầy đủ chuyên môn**. Admin chạy pilot nội bộ theo [runbook](docs/quality-pilot-runbook.md) và ghi bằng chứng trong [phiếu pilot](docs/quality-pilot-worksheet.md). Không coi báo cáo tự động là phê duyệt hồ sơ.
+
+Kết quả chuẩn bị tài liệu, rehearsal synthetic và regression cục bộ: [bản ghi kiểm chứng 2026-10-08](docs/quality-pilot-verification.md). Các kiểm tra chưa thực hiện được ghi riêng; đây không phải kết quả đánh giá chuyên môn BOQ.
 
 ## Kiến trúc
 
@@ -10,9 +16,9 @@ Cổng web tối giản cho khách hàng gửi PDF bản vẽ, tùy chọn đín
 - FastAPI + SQLAlchemy + SQLite: API, authentication, authorization và nghiệp vụ job.
 - Local filesystem: file nằm trong `data/jobs`, không được Caddy public trực tiếp.
 - Caddy: reverse proxy duy nhất ở cổng 80/443.
-- Docker Compose: ba service `frontend`, `backend`, `caddy`.
+- Docker Compose: bốn service chạy dài hạn `frontend`, `backend`, `chat`, `caddy`; profile `chat-setup` có service khởi tạo credential một lần `chat-auth-init`.
 
-Frontend chỉ gọi REST API. Nghiệp vụ trạng thái, ownership, file output và điều kiện hoàn thành nằm hoàn toàn ở backend, nên V2/V3 có thể thêm worker mà không đổi giao diện.
+Frontend gọi REST API. Nghiệp vụ trạng thái, ownership, file output và điều kiện hoàn thành nằm ở backend; worker Codex hiện tạo báo cáo tự động.
 
 ## Development
 
@@ -61,11 +67,11 @@ docker compose exec backend python -m app.cli set-password --username admin --pa
 
 ## Automatic Codex BOQ audit
 
-After a customer upload is stored, the backend starts an asynchronous audit for that job. The worker invokes `codex exec --json --approve-for-me`, explicitly requires the `boq-audit` skill on every run, writes audit artifacts under `data/jobs/<job-code>/output`, and updates the job status to `COMPLETED` or `FAILED`. The customer page polls `GET /api/jobs/{job_code}` every five seconds, so status and outputs come from the backend rather than simulated frontend progress.
+After a customer upload is stored, the backend starts an asynchronous audit for that job. The worker invokes `codex exec --json --approve-for-me`, explicitly requires the `boq-audit` skill on every run, and writes audit artifacts under `data/jobs/<job-code>/output`. A run with all required outputs stops at `REVIEW`; an admin must inspect and explicitly publish it as `COMPLETED` before customers can access the results. Missing required outputs fail the job. The customer page polls `GET /api/jobs/{job_code}` every five seconds, so status and outputs come from the backend rather than simulated frontend progress.
 
 The backend runtime must have the Codex CLI available and the complete skill bundle installed at `BOQ_AUDIT_SKILL_PATH`. The supplied Dockerfile installs the CLI, while Compose mounts the host directory from `BOQ_AUDIT_SKILL_HOST_PATH` read-only. Set both values in `.env`; the default container skill path is `/opt/codex/skills/boq-audit/SKILL.md`. Authenticate Codex once with ChatGPT in the persistent Docker credential volume before starting audits: `sudo docker compose run --rm --no-deps backend codex login`. Do not set `OPENAI_API_KEY`; this deployment intentionally uses the ChatGPT login flow. The worker treats a missing skill or Codex executable as a failed job and records the reason in the admin notes.
 
-Because uploaded drawings are untrusted engineering evidence, run the backend worker in an isolated container/job environment with a dedicated per-job workspace, no production credentials, and appropriate CPU, memory, timeout and disk limits.
+Because uploaded drawings are untrusted engineering evidence, direct audit execution requires a per-job filesystem boundary and no access to production credentials, with appropriate CPU, memory, timeout and disk limits. This is an operational requirement; the Compose mounts alone do not prove per-job isolation. The current backend Compose service mounts shared `/data` and the Codex home, so verify the deployed worker boundary before sending pilot files. See the [pilot runbook](docs/quality-pilot-runbook.md).
 
 ## Telegram notifications for customer PDF uploads
 
@@ -210,7 +216,7 @@ docker compose ps
 curl -fsS https://boq.example.com/api/health
 ```
 
-Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `DATA_DIR` có thể ghi và kho hồ sơ còn quota/dung lượng dự phòng. Response health có `storage_used_mb`, `storage_free_mb` và `storage_quota_mb` để hệ thống giám sát phát cảnh báo. Log của ba service được xoay ở 10 MB × 3 file.
+Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `DATA_DIR` có thể ghi và kho hồ sơ còn quota/dung lượng dự phòng. Response health có `storage_used_mb`, `storage_free_mb` và `storage_quota_mb` để hệ thống giám sát phát cảnh báo. Log của bốn service chạy dài hạn được xoay ở 10 MB × 3 file.
 
 ### Dữ liệu và quyền container
 

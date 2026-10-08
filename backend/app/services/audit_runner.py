@@ -160,8 +160,9 @@ def _run_audit_job(job_id: int):
                 job.completed_at = None
                 job.admin_notes = f"Codex trả mã {result.returncode} sau khi đã tạo đủ báo cáo; cần admin kiểm tra nội dung trước khi hoàn thành."
             else:
-                job.status = JobStatus.COMPLETED
-                job.completed_at = utcnow()
+                job.status = JobStatus.REVIEW
+                job.completed_at = None
+                job.admin_notes = "Audit tự động đã tạo đủ báo cáo; cần admin kiểm tra nội dung trước khi hoàn thành."
             db.commit()
         except Exception as exc:
             db.rollback(); _fail(db, job_id, f"Audit tự động thất bại: {exc}"); logger.exception("audit_job_failed job_id=%s", job_id)
