@@ -6,11 +6,11 @@ export const statusText: Record<JobStatus, string> = {
 };
 
 const colors: Record<JobStatus, string> = {
-  SUBMITTED: "bg-sky-50 text-sky-800 border-sky-200", PROCESSING: "bg-amber-50 text-amber-800 border-amber-200",
-  WAITING_FOR_INFO: "bg-orange-50 text-orange-800 border-orange-200", REVIEW: "bg-cyan-50 text-cyan-800 border-cyan-200",
+  SUBMITTED: "bg-sky-50 text-sky-900 border-sky-300", PROCESSING: "bg-amber-50 text-amber-900 border-amber-300",
+  WAITING_FOR_INFO: "bg-orange-50 text-orange-900 border-orange-300", REVIEW: "bg-orange-50 text-orange-900 border-orange-300",
   COMPLETED: "bg-emerald-50 text-emerald-800 border-emerald-200", FAILED: "bg-red-50 text-red-800 border-red-200",
 };
 
 export function StatusBadge({ status }: { status: JobStatus }) {
-  return <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${colors[status]}`}><span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />{statusText[status]}</span>;
+  return <span className={`inline-flex items-center gap-2 border px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide ${colors[status]}`}><span className="h-1.5 w-1.5 bg-current opacity-70" />{statusText[status]}</span>;
 }

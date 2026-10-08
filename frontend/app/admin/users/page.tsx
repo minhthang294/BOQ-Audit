@@ -47,7 +47,7 @@ export default function AdminUsers() {
   }
   const visible = users.filter(user => `${user.name} ${user.username}`.toLocaleLowerCase("vi").includes(query.toLocaleLowerCase("vi")));
   return <Shell admin>
-    <p className="eyebrow">Quản trị</p><h1 className="mt-1 text-3xl font-extrabold">Tài khoản người dùng</h1>
+    <div className="technical-rule mb-6" /><p className="eyebrow">Quản trị</p><h1 className="page-title mt-2">Tài khoản<br />người dùng</h1>
     <p className="mt-2 text-sm text-slate-500">Admin tạo và cấp mật khẩu cho khách hàng. Khóa tài khoản để ngừng truy cập và giữ hồ sơ.</p>
     {error && <p role="alert" className="error mt-4">{error}</p>}
     {message && <p role="status" className="mt-4 text-sm font-semibold text-emerald-700">{message}</p>}
@@ -62,7 +62,7 @@ export default function AdminUsers() {
       </fieldset>
     </form>
     <div className="mt-6"><label htmlFor="user-search">Tìm theo tên hoặc tên đăng nhập</label><input id="user-search" value={query} onChange={e => setQuery(e.target.value)} /></div>
-    <div className="mt-4 overflow-x-auto rounded-2xl bg-white ring-1 ring-slate-200">
+    <div className="mt-4 overflow-x-auto border-t-2 border-slate-950 bg-white/50">
       <table className="w-full text-left text-sm"><caption className="sr-only">Danh sách tài khoản khách hàng</caption>
         <thead className="bg-slate-50 text-slate-500"><tr>{["Người dùng", "Tên đăng nhập", "Trạng thái", "Hồ sơ", "Thao tác"].map(label => <th key={label} scope="col" className="px-4 py-3">{label}</th>)}</tr></thead>
         <tbody>{visible.map(user => <tr key={user.id} className="border-t border-slate-100">

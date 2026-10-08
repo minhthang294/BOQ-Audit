@@ -35,24 +35,24 @@ export function AuditProgress({ job, compact = false }: { job: Job; compact?: bo
   const currentLabel = complete ? "Đã công bố kết quả" : failed ? "Quy trình tạm dừng" : job.status === "WAITING_FOR_INFO" ? "Chờ bổ sung hồ sơ" : stages[Math.min(current, stages.length - 1)];
 
   if (compact) return <div className="mt-3" aria-label={`Tiến độ: ${currentLabel}`}>
-    <div className="mb-1.5 flex items-center justify-between gap-3 text-xs"><span className="truncate font-medium text-slate-600">{currentLabel}</span><span className="shrink-0 tabular-nums text-slate-400">{percent}%</span></div>
-    <div className="h-1.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${failed ? "bg-red-500" : "bg-cyan-700"}`} style={{ width: `${percent}%` }} /></div>
+    <div className="mb-1.5 flex items-center justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-700">{currentLabel}</span><span className="shrink-0 font-mono tabular-nums text-slate-500">{percent}%</span></div>
+    <div className="h-1 overflow-hidden bg-slate-300"><div className={`h-full ${failed ? "bg-red-600" : "bg-orange-600"}`} style={{ width: `${percent}%` }} /></div>
   </div>;
 
-  return <section className="card" aria-labelledby="audit-progress-title">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="eyebrow">Quy trình BOQ Audit</p><h2 id="audit-progress-title" className="section-title mt-1">{currentLabel}</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{complete ? "Hoàn tất" : failed ? "Tạm dừng" : "Đang xử lý"}</span></div>
-    <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-200" aria-hidden="true"><div className={`h-full rounded-full transition-[width] duration-500 ${failed ? "bg-red-500" : "bg-cyan-700"}`} style={{ width: `${percent}%` }} /></div>
-    <ol className="mt-5 grid gap-3 sm:grid-cols-2">
+  return <section className="overflow-hidden bg-[#11181e] text-white" aria-labelledby="audit-progress-title">
+    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/15 px-5 py-5 sm:px-7"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-400">Quy trình BOQ Audit</p><h2 id="audit-progress-title" className="display-face mt-1 text-3xl font-bold uppercase leading-none">{currentLabel}</h2></div><span className="border border-white/25 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-200">{complete ? "Hoàn tất" : failed ? "Tạm dừng" : "Đang xử lý"}</span></div>
+    <div className="h-1 bg-white/15" aria-hidden="true"><div className={`h-full transition-[width] duration-500 ${failed ? "bg-red-500" : "bg-orange-500"}`} style={{ width: `${percent}%` }} /></div>
+    <ol className="grid sm:grid-cols-2 lg:grid-cols-4">
       {stages.map((stage, index) => {
         const done = complete || index < current;
         const active = !complete && !failed && job.status !== "WAITING_FOR_INFO" && index === current;
         const state = done ? "Đã xong" : active ? "Đang thực hiện" : "Chưa bắt đầu";
-        return <li key={stage} className={`flex min-h-11 items-start gap-3 rounded-lg px-3 py-2 text-sm ${active ? "bg-cyan-50 text-cyan-950" : "text-slate-600"}`}>
-          <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-cyan-800 text-white" : active ? "border-2 border-cyan-700 bg-white text-cyan-800" : "border border-slate-300 bg-white text-slate-400"}`}>{done ? "✓" : index + 1}</span>
-          <span className={active ? "font-semibold" : ""}>{stage}<span className="sr-only"> — {state}</span></span>
+        return <li key={stage} className={`flex min-h-20 items-start gap-3 border-b border-r border-white/10 px-4 py-4 text-sm ${active ? "bg-orange-500 text-slate-950" : done ? "text-white" : "text-slate-500"}`}>
+          <span className={`display-face flex h-7 w-7 shrink-0 items-center justify-center border text-base font-bold ${done ? "border-orange-500 bg-orange-500 text-slate-950" : active ? "border-slate-950 text-slate-950" : "border-slate-600"}`}>{done ? "✓" : index + 1}</span>
+          <span className={active ? "font-bold" : "font-medium"}>{stage}<span className="sr-only"> — {state}</span></span>
         </li>;
       })}
     </ol>
-    {!complete && !failed && <p className="mt-4 text-xs leading-5 text-slate-500">Bước hiện tại được ước tính từ trạng thái và thời gian xử lý; Codex có thể quay lại bước trước khi kiểm tra chéo.</p>}
+    {!complete && !failed && <p className="px-5 py-4 text-xs leading-5 text-slate-400 sm:px-7">Tiến độ ước tính từ trạng thái và thời gian xử lý. Codex có thể quay lại bước trước để kiểm tra chéo.</p>}
   </section>;
 }

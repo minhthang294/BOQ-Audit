@@ -33,13 +33,13 @@ export function ProjectChat({ jobCode, version }: { jobCode: string; version: st
     } finally { setSending(false); }
   }
   return <section className="card">
-    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="project-chat-panel" className="flex min-h-11 w-full items-center justify-between rounded-lg text-left font-bold focus:outline-none focus:ring-2 focus:ring-cyan-700">SBTech AI <span aria-hidden="true">{open ? "−" : "+"}</span></button>
+    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="project-chat-panel" className="focus-ring display-face flex min-h-11 w-full items-center justify-between text-left text-xl font-bold uppercase">SBTech AI <span aria-hidden="true">{open ? "−" : "+"}</span></button>
     {open && <div id="project-chat-panel">
       <p className="mt-1 text-xs leading-5 text-slate-500">Trợ lý AI được tùy chỉnh cho rà soát BOQ. Hỏi về hồ sơ, tiến độ hoặc kết quả đã phát hành.</p>
-      <div ref={transcript} role="log" aria-label="Hội thoại với SBTech AI" aria-live="polite" aria-relevant="additions" className="mt-3 max-h-80 space-y-3 overflow-y-auto rounded-xl bg-slate-50 p-3">
+      <div ref={transcript} role="log" aria-label="Hội thoại với SBTech AI" aria-live="polite" aria-relevant="additions" className="mt-3 max-h-80 space-y-3 overflow-y-auto border border-slate-300 bg-slate-100 p-3">
         {!chat && <p className="text-sm text-slate-500">Đang tải hội thoại…</p>}
         {chat?.messages.length === 0 && <p className="text-sm text-slate-500">Bạn muốn hỏi gì về hồ sơ này?</p>}
-        {chat?.messages.map(item => <div key={item.id} className={`rounded-lg border p-3 text-sm ${item.role === "user" ? "border-cyan-100 bg-cyan-50" : "border-slate-200 bg-white"}`}><p className="mb-1 text-xs font-bold text-slate-500">{item.role === "user" ? "Bạn" : "SBTech AI"}</p><p className="whitespace-pre-wrap break-words">{item.content}</p>{item.status !== "COMPLETED" && <p className="mt-2 text-xs text-slate-500">{item.status === "PENDING" ? "AI đang trả lời…" : "Chưa nhận được câu trả lời. Bạn có thể gửi lại."}</p>}</div>)}
+        {chat?.messages.map(item => <div key={item.id} className={`border p-3 text-sm ${item.role === "user" ? "border-orange-300 bg-orange-50" : "border-slate-300 bg-white"}`}><p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">{item.role === "user" ? "Bạn" : "SBTech AI"}</p><p className="whitespace-pre-wrap break-words">{item.content}</p>{item.status !== "COMPLETED" && <p className="mt-2 text-xs text-slate-500">{item.status === "PENDING" ? "AI đang trả lời…" : "Chưa nhận được câu trả lời. Bạn có thể gửi lại."}</p>}</div>)}
       </div>
       {chat && !chat.enabled && <p className="mt-3 text-sm text-amber-700">SBTech AI chưa được cấu hình.</p>}
       {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}

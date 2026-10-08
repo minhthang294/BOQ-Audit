@@ -62,14 +62,14 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
     try { await api(`/jobs/${job_code}`, {method: "DELETE"}); router.push("/"); router.refresh(); }
     catch (err) { setActionError(err instanceof Error ? err.message : "Không thể xóa hồ sơ."); setBusy(false); }
   }
-  return <Shell wide><Link href="/" className="mb-4 inline-block text-sm text-slate-600">← Danh sách hồ sơ</Link>
-    <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="font-mono text-sm font-bold text-brand">{job.job_code}</p><h1 className="mt-1 text-2xl font-bold">{job.project_name}</h1><p className="mt-1 text-sm text-slate-500">Ngày gửi: {formatDate(job.created_at)}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={renameJob} disabled={busy} className="btn-secondary">ĐỔI TÊN</button><button type="button" onClick={deleteJob} disabled={busy} className="btn-danger">XÓA HỒ SƠ</button></div></div><StatusBadge status={job.status} /></div>
+  return <Shell wide><Link href="/" className="mb-5 inline-flex min-h-11 items-center text-sm font-semibold text-slate-600 hover:text-brand">← Danh sách hồ sơ</Link><div className="technical-rule mb-6" />
+    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><p className="font-mono text-sm font-bold text-brand">{job.job_code}</p><h1 className="display-face mt-1 max-w-4xl text-4xl font-extrabold uppercase leading-none sm:text-5xl">{job.project_name}</h1><p className="mt-3 text-sm text-slate-600">Ngày gửi: {formatDate(job.created_at)}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={renameJob} disabled={busy} className="btn-secondary">Đổi tên</button><button type="button" onClick={deleteJob} disabled={busy} className="btn-danger">Xóa hồ sơ</button></div></div><StatusBadge status={job.status} /></div>
     {actionError && <p className="error mb-5">{actionError}</p>}
     {usage?.available && <section className="card mb-5 text-sm"><span className="font-semibold">Năng lực AI: </span>{usage.ready === false ? "Đang tạm hết hạn mức xử lý" : usage.ready === true ? "Sẵn sàng xử lý" : "Đang kiểm tra khả năng xử lý"}</section>}
     <div className="mb-5"><AuditProgress job={job} /></div>
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-5">
-      <section className="rounded-xl border border-line bg-white p-3 shadow-sm sm:p-4">
+      <section className="border border-line bg-white p-3 sm:p-4">
         <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="font-bold">{viewerTitle}</h2><p className="mt-1 text-xs text-slate-500">{showAnnotatedPdf ? "Đang hiển thị kết quả PDF đã đánh dấu lỗi." : "Đang hiển thị PDF bạn đã gửi."}</p></div><a href={showAnnotatedPdf ? `/api/jobs/${job.job_code}/outputs/${annotatedPdf.id}/download` : `/api/jobs/${job.job_code}/input/download`} className="btn-secondary shrink-0">TẢI PDF</a></div>
         <iframe key={viewerSource} title={`${viewerTitle} ${job.job_code}`} src={viewerSource} className="h-[68vh] min-h-[500px] w-full rounded-lg border border-line bg-slate-100 xl:h-[calc(100vh-210px)] xl:min-h-[650px]" />
       </section>
@@ -77,7 +77,7 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
       </div>
       <aside className="space-y-5 xl:sticky xl:top-5">
         {job.status === "SUBMITTED" && <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4"><span className="mt-0.5 h-5 w-5 shrink-0 animate-pulse rounded-full bg-slate-400" aria-hidden="true" /><div><p className="font-semibold text-slate-900">Đang xếp hàng cho AI</p><p className="mt-1 text-sm leading-5 text-slate-700">Hồ sơ đã nhận; AI sẽ tự động bắt đầu rà soát.</p></div></div>}
-        {job.status === "PROCESSING" && <div className="flex gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-4"><span className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-cyan-200 border-t-brand" aria-hidden="true" /><div><p className="font-semibold text-cyan-950">Đang rà soát hồ sơ</p><p className="mt-1 text-sm leading-5 text-cyan-900">Hồ sơ lớn có thể cần thêm thời gian. Trạng thái tự cập nhật mỗi 5 giây.</p></div></div>}
+        {job.status === "PROCESSING" && <div className="flex gap-3 border border-orange-300 bg-orange-50 p-4"><span className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-orange-200 border-t-brand" aria-hidden="true" /><div><p className="font-semibold text-orange-950">Đang rà soát hồ sơ</p><p className="mt-1 text-sm leading-5 text-orange-900">Hồ sơ lớn có thể cần thêm thời gian. Trạng thái tự cập nhật mỗi 5 giây.</p></div></div>}
         {job.status === "FAILED" && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p>Audit tự động chưa hoàn tất.</p><button type="button" onClick={retryJob} disabled={busy} className="btn-primary mt-3 w-full">{busy ? "ĐANG THỬ LẠI…" : "THỬ LẠI AUDIT"}</button></div>}
         {job.status === "WAITING_FOR_INFO" && <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">Hồ sơ cần được bổ sung. Vui lòng liên hệ đơn vị tra soát.</p>}
         <JobTiming job={job} />

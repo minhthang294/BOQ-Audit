@@ -27,7 +27,7 @@ export function RichTextEditor({ initialHtml, name }: RichTextEditorProps) {
     setHtml(editorRef.current?.innerHTML || "");
   }
 
-  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm focus-within:border-cyan-700 focus-within:ring-4 focus-within:ring-cyan-100/70">
+  return <div className="overflow-hidden border border-slate-400 bg-white focus-within:border-orange-600 focus-within:ring-2 focus-within:ring-orange-200">
     <div className="flex flex-wrap gap-1 border-b border-slate-200 bg-slate-50 p-2" role="toolbar" aria-label="Định dạng ghi chú">
       {tools.map(tool => <button
         key={tool.command}
