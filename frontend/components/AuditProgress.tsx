@@ -31,28 +31,36 @@ export function AuditProgress({ job, compact = false }: { job: Job; compact?: bo
   const current = progressIndex(job);
   const complete = job.status === "COMPLETED";
   const failed = job.status === "FAILED";
+  const running = job.status === "PROCESSING";
   const percent = complete ? 100 : Math.max(4, Math.round(current / stages.length * 100));
   const currentLabel = complete ? "Đã công bố kết quả" : failed ? "Quy trình tạm dừng" : job.status === "WAITING_FOR_INFO" ? "Chờ bổ sung hồ sơ" : stages[Math.min(current, stages.length - 1)];
 
   if (compact) return <div className="mt-3" aria-label={`Tiến độ: ${currentLabel}`}>
     <div className="mb-1.5 flex items-center justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-700">{currentLabel}</span><span className="shrink-0 font-mono tabular-nums text-slate-500">{percent}%</span></div>
-    <div className="h-1 overflow-hidden bg-slate-300"><div className={`h-full ${failed ? "bg-red-600" : "bg-brand"}`} style={{ width: `${percent}%` }} /></div>
+    <div className="progress-track h-1.5" role="progressbar" aria-label="Tiến độ ước tính" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}><span className={`progress-fill ${failed ? "bg-signal" : "bg-brand"} ${running ? "progress-fill-active" : ""}`} style={{ width: `${percent}%` }} /></div>
   </div>;
 
-  return <section className="overflow-hidden bg-night text-white" aria-labelledby="audit-progress-title">
-    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/15 px-5 py-5 sm:px-7"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-soft">Quy trình BOQ Audit</p><h2 id="audit-progress-title" className="display-face mt-1 text-3xl font-bold uppercase leading-none">{currentLabel}</h2></div><span className="border border-white/25 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-200">{complete ? "Hoàn tất" : failed ? "Tạm dừng" : "Đang xử lý"}</span></div>
-    <div className="h-1 bg-white/15" aria-hidden="true"><div className={`h-full transition-[width] duration-500 ${failed ? "bg-red-500" : "bg-brand"}`} style={{ width: `${percent}%` }} /></div>
-    <ol className="grid sm:grid-cols-2 lg:grid-cols-4">
-      {stages.map((stage, index) => {
-        const done = complete || index < current;
-        const active = !complete && !failed && job.status !== "WAITING_FOR_INFO" && index === current;
-        const state = done ? "Đã xong" : active ? "Đang thực hiện" : "Chưa bắt đầu";
-        return <li key={stage} className={`flex min-h-20 items-start gap-3 border-b border-r border-white/10 px-4 py-4 text-sm ${active ? "bg-brand text-white" : done ? "text-white" : "text-slate-400"}`}>
-          <span className={`display-face flex h-7 w-7 shrink-0 items-center justify-center border text-base font-bold ${done ? "border-brand bg-brand text-white" : active ? "border-white text-white" : "border-slate-600"}`}>{done ? "✓" : index + 1}</span>
-          <span className={active ? "font-bold" : "font-medium"}>{stage}<span className="sr-only"> — {state}</span></span>
-        </li>;
-      })}
-    </ol>
-    {!complete && !failed && <p className="px-5 py-4 text-xs leading-5 text-slate-400 sm:px-7">Tiến độ ước tính từ trạng thái và thời gian xử lý. Codex có thể quay lại bước trước để kiểm tra chéo.</p>}
+  return <section className="audit-progress overflow-hidden" aria-labelledby="audit-progress-title">
+    <div className="flex flex-wrap items-center gap-3 px-4 pb-3 pt-4 sm:px-5">
+      <span className={`audit-progress-icon ${running ? "audit-progress-icon-active" : ""} ${failed ? "audit-progress-icon-failed" : ""}`} aria-hidden="true">{complete ? "✓" : failed ? "!" : String(Math.min(current + 1, stages.length)).padStart(2, "0")}</span>
+      <div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand">Tiến trình tra soát · ước tính</p><h2 id="audit-progress-title" aria-live="polite" className="mt-0.5 text-base font-semibold leading-snug text-ink sm:text-lg">{currentLabel}</h2></div>
+      <div className="flex items-center gap-2"><span className="hidden text-xs font-medium text-muted sm:inline">{complete ? "Đủ 8 bước" : `Bước ${Math.min(current + 1, stages.length)}/${stages.length}`}</span><span className={`font-mono text-sm font-bold tabular-nums ${failed ? "text-signal-strong" : "text-brand-strong"}`}>{percent}%</span></div>
+    </div>
+    <div className="px-4 pb-3 sm:px-5"><div className="progress-track h-2" role="progressbar" aria-label="Tiến độ ước tính" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}><span className={`progress-fill ${failed ? "bg-signal" : "bg-brand"} ${running ? "progress-fill-active" : ""}`} style={{ width: `${percent}%` }} /></div></div>
+    <details className="audit-progress-details border-t border-line/70">
+      <summary className="focus-ring flex min-h-10 cursor-pointer items-center justify-between gap-3 px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-brand-soft hover:text-brand-strong sm:px-5"><span>Xem sơ đồ 8 bước</span><span className="audit-progress-chevron text-base" aria-hidden="true">⌄</span></summary>
+      <ol className="grid border-t border-line/70 sm:grid-cols-2 xl:grid-cols-4">
+        {stages.map((stage, index) => {
+          const done = complete || index < current;
+          const active = !complete && !failed && job.status !== "WAITING_FOR_INFO" && index === current;
+          const state = done ? "Đã xong" : active ? "Đang thực hiện" : "Chưa bắt đầu";
+          return <li key={stage} className={`audit-progress-step flex items-start gap-2.5 border-b border-line/60 px-4 py-3 text-xs sm:px-5 ${active ? "audit-progress-step-active font-semibold text-brand-strong" : done ? "text-ink" : "text-slate-500"}`}>
+            <span className={`font-mono text-[11px] font-bold tabular-nums ${done ? "text-brand" : active ? "text-signal" : "text-slate-400"}`} aria-hidden="true">{done ? "✓" : String(index + 1).padStart(2, "0")}</span>
+            <span>{stage}<span className="sr-only"> — {state}</span></span>
+          </li>;
+        })}
+      </ol>
+      {!complete && !failed && <p className="px-4 py-2 text-xs leading-5 text-slate-500 sm:px-5">Các bước được ước tính từ trạng thái và thời gian xử lý; AI có thể quay lại để kiểm tra chéo.</p>}
+    </details>
   </section>;
 }

@@ -12,9 +12,9 @@ Verification: all 57 backend checks pass, frontend typecheck/build pass, and the
 
 - Customers have one usable login session. A new browser login replaces the previous session; tabs sharing one cookie work together. Admins retain multiple sessions. Account and IP login limits are enforced independently.
 - Each worker attempt has durable timing records. Customer/admin pages show total turnaround, cumulative measured AI time, and the current attempt. Failed attempts remain in totals after retry. Interrupted and historical measurements are labeled incomplete/unavailable. Time-based simulated audit stages have been removed.
-- Project pages contain a collapsible Vietnamese SBTech AI chat. Messages survive refresh, with a 2000-character question limit and a default 20 sends/hour/account. One active chat turn is allowed globally for this single-backend deployment.
+- Project pages show Vietnamese SBTech AI chat in the left sidebar (opened with **Chat** on mobile). Messages survive refresh, with a 2000-character question limit and a default 20 sends/hour/account. One active chat turn is allowed globally for this single-backend deployment.
 - Only approved customer summaries and bounded text excerpts from the first eight annotated PDF pages enter chat context. Excel cells, drawings, visual details, internal notes and audit logs are not made available. The assistant must acknowledge these limits.
-- Customer usage requests use `/api/jobs/ai-capacity`, exposing availability only. `/api/jobs/codex-usage` is admin-only.
+- Customer usage requests use `/api/jobs/ai-capacity`, exposing availability only. `/api/jobs/codex-usage` is admin-only. Both endpoints query Codex usage only while a job is `PROCESSING`.
 - The proxy caps incoming customer chat requests at 16 KB; the private gateway authenticates before parsing and caps streamed context at 200 KB.
 - Project publication/status changes reset the provider context; obsolete transcripts are hidden. Late answers are discarded if the project changes or the session is replaced while answering.
 

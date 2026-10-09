@@ -21,12 +21,13 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
     return () => { active = false; window.clearInterval(timer); };
   }, [job_code]);
   useEffect(() => {
+    if (job?.status !== "PROCESSING") { setUsage(undefined); return; }
     let active = true;
     const loadUsage = () => api<AICapacity>("/jobs/ai-capacity").then(value => { if (active) setUsage(value); }).catch(() => undefined);
     loadUsage();
     const timer = window.setInterval(loadUsage, 60_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, []);
+  }, [job?.status]);
   if (error) return <Shell><p className="error">{error}</p></Shell>;
   if (!job) return <Shell><p className="text-slate-500">Đang tải hồ sơ…</p></Shell>;
   const output = (type: OutputType) => job.outputs.find(item => item.file_type === type);
@@ -62,7 +63,7 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
     try { await api(`/jobs/${job_code}`, {method: "DELETE"}); router.push("/"); router.refresh(); }
     catch (err) { setActionError(err instanceof Error ? err.message : "Không thể xóa hồ sơ."); setBusy(false); }
   }
-  return <Shell wide><Link href="/" className="mb-5 inline-flex min-h-11 items-center text-sm font-semibold text-slate-600 hover:text-brand">← Danh sách hồ sơ</Link><div className="technical-rule mb-6" />
+  return <Shell wide sidebarChat={<ProjectChat key={job.job_code} jobCode={job.job_code} version={job.updated_at} />}><Link href="/" className="mb-5 inline-flex min-h-11 items-center text-sm font-semibold text-slate-600 hover:text-brand">← Danh sách hồ sơ</Link><div className="technical-rule mb-6" />
     <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><p className="font-mono text-sm font-bold text-brand">{job.job_code}</p><h1 className="display-face mt-1 max-w-4xl text-4xl font-extrabold uppercase leading-none sm:text-5xl">{job.project_name}</h1><p className="mt-3 text-sm text-slate-600">Ngày gửi: {formatDate(job.created_at)}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={renameJob} disabled={busy} className="btn-secondary">Đổi tên</button><button type="button" onClick={deleteJob} disabled={busy} className="btn-danger">Xóa hồ sơ</button></div></div><StatusBadge status={job.status} /></div>
     {actionError && <p className="error mb-5">{actionError}</p>}
     {usage?.available && <section className="card mb-5 text-sm"><span className="font-semibold">Năng lực AI: </span>{usage.ready === false ? "Đang tạm hết hạn mức xử lý" : usage.ready === true ? "Sẵn sàng xử lý" : "Đang kiểm tra khả năng xử lý"}</section>}
@@ -81,7 +82,6 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
         {job.status === "FAILED" && <div className="border border-red-300 bg-red-50 p-4 text-sm text-red-900"><p>Audit tự động chưa hoàn tất.</p><button type="button" onClick={retryJob} disabled={busy} className="btn-primary mt-3 w-full">{busy ? "ĐANG THỬ LẠI…" : "THỬ LẠI AUDIT"}</button></div>}
         {job.status === "WAITING_FOR_INFO" && <p className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">Hồ sơ cần được bổ sung. Vui lòng liên hệ đơn vị tra soát.</p>}
         <JobTiming job={job} />
-        <ProjectChat jobCode={job.job_code} version={job.updated_at} />
         {job.status === "COMPLETED" && <section className="card"><h2 className="display-face text-xl font-bold uppercase">Kết quả tra soát</h2><p className="mt-2 border border-amber-300 bg-amber-50 p-3 text-sm leading-5 text-amber-900">Kết quả tự động chưa phải phê duyệt hồ sơ. Người có chuyên môn cần đối chiếu nguồn và xác nhận trước khi sử dụng.</p><div className="mt-4 grid grid-cols-2 gap-3"><div className="border border-red-200 bg-red-50 p-3"><p className="text-xs text-red-700">Lỗi nghiêm trọng</p><p className="mt-1 text-2xl font-bold text-red-900">{job.critical_errors}</p></div><div className="border border-amber-200 bg-amber-50 p-3"><p className="text-xs text-amber-700">Cần lưu ý</p><p className="mt-1 text-2xl font-bold text-amber-900">{job.warnings}</p></div></div>{job.customer_notes && <div className="customer-message-scroll rich-text-content mt-4 border border-slate-200 bg-slate-50 p-4 text-sm leading-6" dangerouslySetInnerHTML={{ __html: job.customer_notes }} />}<div className="mt-4 space-y-2">{downloads.map(({item, label}) => item ? <a key={item.id} className="btn-primary w-full" href={`/api/jobs/${job.job_code}/outputs/${item.id}/download`}>{label}<span className="ml-2 text-xs opacity-70">({fileSize(item.file_size)})</span></a> : null)}</div></section>}
       </aside>
     </div>
