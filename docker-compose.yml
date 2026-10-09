@@ -1,5 +1,6 @@
 services:
   backend:
+    image: ${IMAGE_REGISTRY:-boq-audit}/backend:${IMAGE_TAG:-local}
     build: ./backend
     restart: unless-stopped
     env_file: .env
@@ -24,6 +25,7 @@ services:
         max-file: "3"
 
   frontend:
+    image: ${IMAGE_REGISTRY:-boq-audit}/frontend:${IMAGE_TAG:-local}
     build: ./frontend
     restart: unless-stopped
     environment:
@@ -40,6 +42,7 @@ services:
         max-file: "3"
 
   chat:
+    image: ${IMAGE_REGISTRY:-boq-audit}/chat:${IMAGE_TAG:-local}
     build: ./chat
     restart: unless-stopped
     environment:

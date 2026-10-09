@@ -16,3 +16,5 @@ data/*
 !data/.gitkeep
 backups/*
 !backups/.gitkeep
+.deploy.env
+.deploy/

@@ -10,6 +10,10 @@ Cổng web nội bộ để người dùng gửi PDF bản vẽ, tùy chọn đ�
 
 Kết quả chuẩn bị tài liệu, rehearsal synthetic và regression cục bộ: [bản ghi kiểm chứng 2026-10-08](docs/quality-pilot-verification.md). Các kiểm tra chưa thực hiện được ghi riêng; đây không phải kết quả đánh giá chuyên môn BOQ.
 
+### CI/CD lên Google Compute Engine
+
+Quy trình GitHub Actions chạy kiểm thử trên pull request, build/push image theo commit SHA lên Artifact Registry và deploy có kiểm soát vào VM khi cập nhật `main`. Xem [hướng dẫn CI/CD và cấu hình IAM](docs/ci-cd-gce.md). Pipeline dùng Workload Identity Federation, không lưu service-account key; cần cấu hình GitHub variables, quyền VM và environment `production` trước khi bật deploy.
+
 ## Kiến trúc
 
 - Next.js App Router + TypeScript + Tailwind CSS: giao diện customer/admin.
