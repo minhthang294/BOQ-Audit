@@ -39,20 +39,20 @@ if (cd "$active_case" && PATH="$active_case/bin:$PATH" FAKE_DOCKER_LOG="$active_
   echo "Expected an active audit to block deployment." >&2
   exit 1
 fi
-if rg -q 'compose up ' "$active_case/docker.log"; then
+if grep -Fq 'compose up ' "$active_case/docker.log"; then
   echo "Deployment restarted containers while an audit was active." >&2
   exit 1
 fi
 
 success_case="$(make_case success)"
 (cd "$success_case" && PATH="$success_case/bin:$PATH" FAKE_DOCKER_LOG="$success_case/docker.log" bash scripts/deploy-gce.sh)
-rg -q '^0123456789abcdef0123456789abcdef01234567-123456-1\|compose up ' "$success_case/docker.log"
+grep -Fq '0123456789abcdef0123456789abcdef01234567-123456-1|compose up ' "$success_case/docker.log"
 
 rollback_case="$(make_case rollback)"
 if (cd "$rollback_case" && PATH="$rollback_case/bin:$PATH" FAKE_DOCKER_LOG="$rollback_case/docker.log" FAKE_FAIL_DEPLOY=1 bash scripts/deploy-gce.sh); then
   echo "Expected the failed release to return a failure status after rollback." >&2
   exit 1
 fi
-rg -q '^rollback\|compose up ' "$rollback_case/docker.log"
+grep -Fq 'rollback|compose up ' "$rollback_case/docker.log"
 
 echo "Deploy guard, successful health path, and failed-release rollback checks passed."
