@@ -28,6 +28,10 @@ ACTIVE_JOB_STATUSES = (
 )
 
 
+def _has_processing_job(db: Session) -> bool:
+    return db.scalar(select(Job.id).where(Job.status == JobStatus.PROCESSING).limit(1)) is not None
+
+
 def owned_job(db: Session, job_code: str, user: User) -> Job:
     job = db.scalar(
         select(Job)
@@ -76,12 +80,23 @@ async def list_jobs(user: User = Depends(current_user), db: Session = Depends(ge
 
 
 @router.get("/codex-usage", response_model=CodexUsageResponse)
-async def codex_usage(_: User = Depends(admin_user)):
+async def codex_usage(_: User = Depends(admin_user), db: Session = Depends(get_db)):
+    if not _has_processing_job(db):
+        return {
+            "available": False,
+            "plan_type": None,
+            "ordinary_usage_allowed": None,
+            "primary": None,
+            "secondary": None,
+            "checked_at": utcnow(),
+        }
     return await run_in_threadpool(get_codex_usage)
 
 
 @router.get("/ai-capacity", response_model=AICapacityResponse)
-async def ai_capacity(_: User = Depends(current_user)):
+async def ai_capacity(_: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not _has_processing_job(db):
+        return {"available": False, "ready": None, "checked_at": utcnow()}
     usage = await run_in_threadpool(get_codex_usage)
     return {"available": usage["available"], "ready": usage.get("ordinary_usage_allowed"), "checked_at": usage["checked_at"]}
 
