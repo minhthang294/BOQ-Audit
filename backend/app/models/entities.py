@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -59,6 +59,12 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class CustomerActiveSession(Base):
+    __tablename__ = "customer_active_sessions"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("user_sessions.session_id", ondelete="CASCADE"), unique=True)
+
+
 class RateLimitEvent(Base):
     __tablename__ = "rate_limit_events"
     __table_args__ = (Index("ix_rate_limit_scope_key_time", "scope", "key_hash", "occurred_at"),)
@@ -88,12 +94,66 @@ class Job(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     user: Mapped[User] = relationship(back_populates="jobs")
     outputs: Mapped[list["JobOutput"]] = relationship(back_populates="job", cascade="all, delete-orphan")
+    audit_runs: Mapped[list["AuditRun"]] = relationship(back_populates="job", cascade="all, delete-orphan", order_by="AuditRun.attempt", lazy="selectin")
     narrative_input: Mapped[Optional["JobNarrativeInput"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", uselist=False
     )
     estimate_input: Mapped[Optional["JobEstimateInput"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", uselist=False
     )
+
+    @property
+    def turnaround_seconds(self) -> float:
+        end = self.completed_at if self.status in (JobStatus.COMPLETED, JobStatus.FAILED) else None
+        return max(0, ((end or utcnow()).replace(tzinfo=timezone.utc) - self.created_at.replace(tzinfo=timezone.utc)).total_seconds())
+
+    @property
+    def ai_processing_seconds(self) -> float | None:
+        if not self.audit_runs:
+            return None
+        return sum(run.duration_seconds or 0 for run in self.audit_runs)
+
+    @property
+    def ai_timing_complete(self) -> bool:
+        return bool(self.audit_runs) and all(run.status == "RUNNING" or run.duration_seconds is not None for run in self.audit_runs)
+
+    @property
+    def current_attempt_seconds(self) -> float | None:
+        running = next((run for run in self.audit_runs if run.status == "RUNNING"), None)
+        return max(0, (utcnow() - running.started_at.replace(tzinfo=timezone.utc)).total_seconds()) if running else None
+
+
+class AuditRun(Base):
+    __tablename__ = "audit_runs"
+    __table_args__ = (UniqueConstraint("job_id", "attempt"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    attempt: Mapped[int] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="RUNNING")
+    job: Mapped[Job] = relationship(back_populates="audit_runs")
+
+
+class ChatConversation(Base):
+    __tablename__ = "chat_conversations"
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    thread_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    context_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    messages: Mapped[list["ChatMessage"]] = relationship(cascade="all, delete-orphan", order_by="ChatMessage.id")
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("chat_conversations.job_id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(12))
+    content: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(12), default="COMPLETED")
+    context_version: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class JobEstimateInput(Base):

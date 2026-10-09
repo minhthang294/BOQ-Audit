@@ -27,7 +27,7 @@ export function RichTextEditor({ initialHtml, name }: RichTextEditorProps) {
     setHtml(editorRef.current?.innerHTML || "");
   }
 
-  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm focus-within:border-cyan-700 focus-within:ring-4 focus-within:ring-cyan-100/70">
+  return <div className="overflow-hidden border border-slate-400 bg-white focus-within:border-brand focus-within:ring-2 focus-within:ring-brand-soft">
     <div className="flex flex-wrap gap-1 border-b border-slate-200 bg-slate-50 p-2" role="toolbar" aria-label="Định dạng ghi chú">
       {tools.map(tool => <button
         key={tool.command}
@@ -36,7 +36,7 @@ export function RichTextEditor({ initialHtml, name }: RichTextEditorProps) {
         aria-label={tool.title}
         onMouseDown={event => event.preventDefault()}
         onClick={event => applyFormat(event, tool.command)}
-        className={`rounded-lg border border-transparent px-2.5 py-1.5 text-xs text-slate-700 transition hover:border-slate-200 hover:bg-white ${tool.className}`}
+        className={`min-h-11 border border-transparent px-3 py-2 text-xs text-slate-700 transition-colors hover:border-slate-300 hover:bg-white ${tool.className}`}
       >{tool.label}</button>)}
     </div>
     <div

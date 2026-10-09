@@ -30,6 +30,14 @@
         max_size 1520MB
     }
 
+    @chatMessages {
+        method POST
+        path /api/jobs/*/chat/messages
+    }
+    request_body @chatMessages {
+        max_size 16KB
+    }
+
     @api path /api/*
     handle @api {
         reverse_proxy backend:8000

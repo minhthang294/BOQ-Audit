@@ -7,12 +7,12 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 from starlette.concurrency import run_in_threadpool
 
-from app.api.deps import current_user
+from app.api.deps import admin_user, current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.telegram import notify_pdf_upload
 from app.models.entities import Job, JobEstimateInput, JobNarrativeInput, JobStatus, User, UserRole, utcnow
-from app.schemas.api import CodexUsageResponse, CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
+from app.schemas.api import AICapacityResponse, CodexUsageResponse, CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
 from app.storage.files import EXCEL_MIMES, NARRATIVE_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 from app.services.audit_runner import run_audit_job
 from app.services.codex_usage import get_codex_usage
@@ -42,7 +42,7 @@ def owned_job(db: Session, job_code: str, user: User) -> Job:
 def visible_customer_job(job: Job) -> JobResponse:
     response = JobResponse.model_validate(job)
     if job.status != JobStatus.COMPLETED:
-        return response.model_copy(update={"outputs": []})
+        return response.model_copy(update={"outputs": [], "customer_notes": None, "critical_errors": 0, "warnings": 0})
     return response
 
 
@@ -76,8 +76,14 @@ async def list_jobs(user: User = Depends(current_user), db: Session = Depends(ge
 
 
 @router.get("/codex-usage", response_model=CodexUsageResponse)
-async def codex_usage(_: User = Depends(current_user)):
+async def codex_usage(_: User = Depends(admin_user)):
     return await run_in_threadpool(get_codex_usage)
+
+
+@router.get("/ai-capacity", response_model=AICapacityResponse)
+async def ai_capacity(_: User = Depends(current_user)):
+    usage = await run_in_threadpool(get_codex_usage)
+    return {"available": usage["available"], "ready": usage.get("ordinary_usage_allowed"), "checked_at": usage["checked_at"]}
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -132,8 +138,7 @@ async def create_job(
         description=None,
         original_filename=display_name,
         input_file_path="pending",
-        status=JobStatus.PROCESSING,
-        started_at=utcnow(),
+        status=JobStatus.SUBMITTED,
     )
     db.add(job)
     db.flush()
@@ -181,7 +186,7 @@ async def create_job(
         saved_job = owned_job(db, job_code, user)
         background_tasks.add_task(run_audit_job, job_id)
         background_tasks.add_task(notify_pdf_upload, job_code, clean_project_name, display_name, user.email)
-        return saved_job
+        return visible_customer_job(saved_job)
     except Exception:
         db.rollback()
         destination.unlink(missing_ok=True)
@@ -203,6 +208,8 @@ async def retry_job(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    db.rollback()
+    db.execute(text("BEGIN IMMEDIATE"))
     job = owned_job(db, job_code, user)
     if job.status != JobStatus.FAILED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Chỉ có thể thử lại hồ sơ bị lỗi")
@@ -223,15 +230,16 @@ async def retry_job(
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     job.outputs.clear()
-    job.status = JobStatus.PROCESSING
-    job.started_at = utcnow()
+    job.status = JobStatus.SUBMITTED
+    job.started_at = None
     job.completed_at = None
     job.admin_notes = None
+    job.customer_notes = None
     job.critical_errors = 0
     job.warnings = 0
     db.commit()
     background_tasks.add_task(run_audit_job, job.id)
-    return owned_job(db, job_code, user)
+    return visible_customer_job(owned_job(db, job_code, user))
 
 
 @router.get("/{job_code}/narrative/download")

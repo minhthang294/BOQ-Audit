@@ -48,3 +48,9 @@ def test_production_accepts_strong_configuration():
 
 def test_demo_account_is_opt_in_by_default():
     assert Settings(_env_file=None, demo_password="").demo_password == ""
+
+
+def test_chat_token_is_optional_but_must_be_strong_when_enabled():
+    assert Settings(_env_file=None, chat_gateway_token="").chat_gateway_token == ""
+    with pytest.raises(ValidationError, match="CHAT_GATEWAY_TOKEN"):
+        Settings(_env_file=None, chat_gateway_token="weak")

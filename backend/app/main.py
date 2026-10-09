@@ -9,13 +9,15 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text
 
-from app.api import admin, auth, jobs
-from app.auth.security import decode_access_token, hash_password
+from app.api import admin, auth, chat, jobs, users
+from app.auth.security import hash_password
+from app.api.deps import session_user
+from app.core.migrations import migrate_and_recover
 from app.core.config import get_settings
-from app.core.database import Base, SessionLocal, engine
+from app.core.database import SessionLocal
 from app.core.rate_limit import PersistentRateLimiter
 from app.core.storage_guard import require_upload_capacity, storage_snapshot
-from app.models.entities import User, UserRole, UserSession, utcnow
+from app.models.entities import User, UserRole
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("boq-audit")
@@ -32,7 +34,7 @@ upload_lock = asyncio.Lock()
 async def lifespan(_: FastAPI):
     (settings.data_dir / "database").mkdir(parents=True, exist_ok=True)
     settings.jobs_dir.mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(engine)
+    migrate_and_recover()
     with SessionLocal() as db:
         seeds = [
             (settings.admin_username.strip().lower(), settings.admin_password, settings.admin_name, UserRole.ADMIN),
@@ -57,6 +59,8 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 
 
 def _is_upload_request(request: Request) -> bool:
@@ -72,22 +76,13 @@ async def guard_uploads(request: Request, call_next):
     if not _is_upload_request(request):
         return await call_next(request)
 
-    claims = decode_access_token(request.cookies.get("session", ""))
     with SessionLocal() as db:
-        active = bool(
-            claims
-            and db.scalar(
-                select(func.count(UserSession.session_id)).where(
-                    UserSession.session_id == claims.session_id,
-                    UserSession.user_id == claims.user_id,
-                    UserSession.expires_at > utcnow(),
-                )
-            )
-        )
+        try:
+            user_id = session_user(request.cookies.get("session"), db).id
+        except HTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
         db.rollback()
-        if not active or not claims:
-            return JSONResponse({"detail": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn"}, status_code=401)
-        if not upload_limiter.consume(db, str(claims.user_id)):
+        if not upload_limiter.consume(db, str(user_id)):
             return JSONResponse(
                 {"detail": "Bạn đã tải lên quá nhiều lần. Vui lòng thử lại sau."},
                 status_code=429,

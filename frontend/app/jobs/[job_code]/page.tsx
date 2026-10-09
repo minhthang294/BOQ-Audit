@@ -4,45 +4,15 @@ import { useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { StatusBadge } from "@/components/StatusBadge";
-import { api, fileSize, formatDate, parseApiDate } from "@/lib/api";
-import { CodexUsage, CodexUsageWindow, Job, JobStatus, OutputType } from "@/types";
+import { JobTiming } from "@/components/JobTiming";
+import { AuditProgress } from "@/components/AuditProgress";
+import { ProjectChat } from "@/components/ProjectChat";
+import { api, fileSize, formatDate } from "@/lib/api";
+import { AICapacity, Job, OutputType } from "@/types";
 
-const steps = [
-  "Đọc đầy đủ BOQ Audit v6 và kiểm kê trang, tờ, bảng trong PDF",
-  "Dựng mô hình cấu, bóc tách độc lập và rà từng dòng BOQ/bảng tổng hợp",
-  "Đối chiếu hai chiều, kiểm chuỗi khối lượng và rà soát vòng hai",
-  "Xuất Excel chi tiết và PDF đánh dấu; kiểm tra độ phủ và vị trí đánh dấu",
-];
-const FIRST_STEP_MS = 4 * 60 * 1000;
-const SECOND_STEP_MS = 10 * 60 * 1000;
-function progressState(status: JobStatus, elapsedMs: number) {
-  if (status === "COMPLETED") return { completed: steps.length, active: -1 };
-  if (status === "SUBMITTED") return { completed: 0, active: 0 };
-  if (status === "REVIEW") return { completed: 2, active: 2 };
-
-  // The API exposes job status, but not per-action progress. Estimate the first
-  // two stages from started_at so the list can advance while a job is processing.
-  const completed = elapsedMs < FIRST_STEP_MS ? 0 : elapsedMs < FIRST_STEP_MS + SECOND_STEP_MS ? 1 : 2;
-  if (status === "FAILED") return { completed, active: -1 };
-  return { completed, active: completed };
-}
-function usageWindowLabel(window?: CodexUsageWindow | null) {
-  if (!window?.window_duration_minutes) return "Hạn mức sử dụng";
-  if (window.window_duration_minutes < 24 * 60) return `Hạn mức ${Math.round(window.window_duration_minutes / 60)} giờ`;
-  return `Hạn mức ${Math.round(window.window_duration_minutes / (24 * 60))} ngày`;
-}
-function resetLabel(timestamp?: number | null) {
-  if (!timestamp) return "Chưa có lịch làm mới";
-  return `Làm mới ${new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(timestamp * 1000))}`;
-}
 export default function JobDetail({ params }: { params: Promise<{job_code: string}> }) {
   const { job_code } = use(params); const router = useRouter(); const [job, setJob] = useState<Job>(); const [error, setError] = useState(""); const [actionError, setActionError] = useState(""); const [busy, setBusy] = useState(false);
-  const [usage, setUsage] = useState<CodexUsage>();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const [usage, setUsage] = useState<AICapacity>();
   useEffect(() => {
     let active = true;
     const load = () => api<Job>(`/jobs/${job_code}`).then(value => { if (active) setJob(value); }).catch(e => { if (active) setError(e.message); });
@@ -52,15 +22,13 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
   }, [job_code]);
   useEffect(() => {
     let active = true;
-    const loadUsage = () => api<CodexUsage>("/jobs/codex-usage").then(value => { if (active) setUsage(value); }).catch(() => undefined);
+    const loadUsage = () => api<AICapacity>("/jobs/ai-capacity").then(value => { if (active) setUsage(value); }).catch(() => undefined);
     loadUsage();
     const timer = window.setInterval(loadUsage, 60_000);
     return () => { active = false; window.clearInterval(timer); };
   }, []);
   if (error) return <Shell><p className="error">{error}</p></Shell>;
   if (!job) return <Shell><p className="text-slate-500">Đang tải hồ sơ…</p></Shell>;
-  const startedAt = job.started_at ? parseApiDate(job.started_at).getTime() : parseApiDate(job.created_at).getTime();
-  const progress = progressState(job.status, Math.max(0, now - startedAt));
   const output = (type: OutputType) => job.outputs.find(item => item.file_type === type);
   const downloads = [
     { item: output("EXCEL_REPORT"), label: "TẢI BÁO CÁO RÀ SOÁT BOQ" },
@@ -94,35 +62,27 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
     try { await api(`/jobs/${job_code}`, {method: "DELETE"}); router.push("/"); router.refresh(); }
     catch (err) { setActionError(err instanceof Error ? err.message : "Không thể xóa hồ sơ."); setBusy(false); }
   }
-  return <Shell wide><Link href="/" className="mb-4 inline-block text-sm text-slate-600">← Danh sách hồ sơ</Link>
-    <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="font-mono text-sm font-bold text-brand">{job.job_code}</p><h1 className="mt-1 text-2xl font-bold">{job.project_name}</h1><p className="mt-1 text-sm text-slate-500">Ngày gửi: {formatDate(job.created_at)}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={renameJob} disabled={busy} className="btn-secondary">ĐỔI TÊN</button><button type="button" onClick={deleteJob} disabled={busy} className="btn-danger">XÓA HỒ SƠ</button></div></div><StatusBadge status={job.status} /></div>
+  return <Shell wide><Link href="/" className="mb-5 inline-flex min-h-11 items-center text-sm font-semibold text-slate-600 hover:text-brand">← Danh sách hồ sơ</Link><div className="technical-rule mb-6" />
+    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><p className="font-mono text-sm font-bold text-brand">{job.job_code}</p><h1 className="display-face mt-1 max-w-4xl text-4xl font-extrabold uppercase leading-none sm:text-5xl">{job.project_name}</h1><p className="mt-3 text-sm text-slate-600">Ngày gửi: {formatDate(job.created_at)}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={renameJob} disabled={busy} className="btn-secondary">Đổi tên</button><button type="button" onClick={deleteJob} disabled={busy} className="btn-danger">Xóa hồ sơ</button></div></div><StatusBadge status={job.status} /></div>
     {actionError && <p className="error mb-5">{actionError}</p>}
-    {usage?.available && (usage.primary || usage.secondary) && <section className="card mb-5 overflow-hidden" aria-labelledby="ai-usage-title"><div className="flex items-start justify-between gap-3"><div><p className="eyebrow">Năng lực xử lý</p><h2 id="ai-usage-title" className="mt-1 font-bold">Dung lượng AI còn lại</h2></div><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${usage.ordinary_usage_allowed === false ? "bg-red-500" : "bg-emerald-500"}`} title={usage.ordinary_usage_allowed === false ? "Đang tạm hết hạn mức" : "Sẵn sàng xử lý"} /></div><div className="mt-4 grid gap-4 sm:grid-cols-2">{[usage.primary, usage.secondary].filter((item): item is CodexUsageWindow => !!item).map((item, index) => <div key={`${item.window_duration_minutes}-${index}`}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="font-medium text-slate-700">{usageWindowLabel(item)}</span><strong className="text-slate-950">{item.remaining_percent}%</strong></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full transition-[width] duration-500 ${item.remaining_percent <= 15 ? "bg-red-500" : item.remaining_percent <= 35 ? "bg-amber-500" : "bg-cyan-700"}`} style={{ width: `${item.remaining_percent}%` }} /></div><p className="mt-1.5 text-xs text-slate-500">{resetLabel(item.resets_at)}</p></div>)}</div><p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">Tự cập nhật mỗi phút</p></section>}
+    {usage?.available && <section className="card mb-5 text-sm"><span className="font-semibold">Năng lực AI: </span>{usage.ready === false ? "Đang tạm hết hạn mức xử lý" : usage.ready === true ? "Sẵn sàng xử lý" : "Đang kiểm tra khả năng xử lý"}</section>}
+    <div className="mb-5"><AuditProgress job={job} /></div>
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-5">
-      <section className="rounded-xl border border-line bg-white p-3 shadow-sm sm:p-4">
+      <section className="border border-line bg-white p-3 sm:p-4">
         <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="font-bold">{viewerTitle}</h2><p className="mt-1 text-xs text-slate-500">{showAnnotatedPdf ? "Đang hiển thị kết quả PDF đã đánh dấu lỗi." : "Đang hiển thị PDF bạn đã gửi."}</p></div><a href={showAnnotatedPdf ? `/api/jobs/${job.job_code}/outputs/${annotatedPdf.id}/download` : `/api/jobs/${job.job_code}/input/download`} className="btn-secondary shrink-0">TẢI PDF</a></div>
-        <iframe key={viewerSource} title={`${viewerTitle} ${job.job_code}`} src={viewerSource} className="h-[68vh] min-h-[500px] w-full rounded-lg border border-line bg-slate-100 xl:h-[calc(100vh-210px)] xl:min-h-[650px]" />
+        <iframe key={viewerSource} title={`${viewerTitle} ${job.job_code}`} src={viewerSource} className="h-[68vh] min-h-[500px] w-full border border-line bg-slate-100 xl:h-[calc(100vh-210px)] xl:min-h-[650px]" />
       </section>
         <section className="card"><h2 className="font-bold">Tệp đầu vào</h2><div className="mt-3 space-y-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Bản vẽ PDF</p><p className="mt-1 break-all text-sm font-medium">{job.original_filename}</p></div>{job.estimate_input && <div className="border-t border-slate-100 pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Dự toán Excel</p><p className="mt-1 break-all text-sm font-medium">{job.estimate_input.original_filename} <span className="font-normal text-slate-400">({fileSize(job.estimate_input.file_size)})</span></p><a href={`/api/jobs/${job.job_code}/estimate/download`} className="btn-secondary mt-3 w-full">TẢI DỰ TOÁN</a></div>}{job.narrative_input && <div className="border-t border-slate-100 pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Thuyết minh</p><p className="mt-1 break-all text-sm font-medium">{job.narrative_input.original_filename} <span className="font-normal text-slate-400">({fileSize(job.narrative_input.file_size)})</span></p><a href={`/api/jobs/${job.job_code}/narrative/download`} className="btn-secondary mt-3 w-full">TẢI THUYẾT MINH</a></div>}</div></section>
       </div>
       <aside className="space-y-5 xl:sticky xl:top-5">
-        {job.status === "SUBMITTED" && <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4"><span className="mt-0.5 h-5 w-5 shrink-0 animate-pulse rounded-full bg-slate-400" aria-hidden="true" /><div><p className="font-semibold text-slate-900">Đang xếp hàng cho AI</p><p className="mt-1 text-sm leading-5 text-slate-700">Hồ sơ đã nhận; backend sẽ tự động bắt đầu BOQ Audit.</p></div></div>}
-        {job.status === "PROCESSING" && <div className="flex gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-4"><span className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-cyan-200 border-t-brand" aria-hidden="true" /><div><p className="font-semibold text-cyan-950">Đang rà soát hồ sơ</p><p className="mt-1 text-sm leading-5 text-cyan-900">Hồ sơ lớn có thể cần thêm thời gian. Trạng thái tự cập nhật mỗi 5 giây.</p></div></div>}
-        {job.status === "FAILED" && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p>Audit tự động chưa hoàn tất.</p><button type="button" onClick={retryJob} disabled={busy} className="btn-primary mt-3 w-full">{busy ? "ĐANG THỬ LẠI…" : "THỬ LẠI AUDIT"}</button></div>}
-        {job.customer_notes && job.status !== "COMPLETED" && <section className="card"><h2 className="font-bold">Phản hồi từ AI</h2><div className="customer-message-scroll rich-text-content mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-6" dangerouslySetInnerHTML={{ __html: job.customer_notes }} /></section>}
-        {job.status === "WAITING_FOR_INFO" && <p className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">Hồ sơ cần được bổ sung. Vui lòng liên hệ đơn vị tra soát.</p>}
-        <section className="card" aria-labelledby="progress-title"><h2 id="progress-title" className="font-bold">Tiến độ</h2><ol className="mt-4 space-y-4">{steps.map((label, i) => {
-          const done = i < progress.completed;
-          const active = i === progress.active;
-          return <li key={label} className="flex items-start gap-3" aria-current={active ? "step" : undefined}>
-            <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${done ? "border-slate-400 bg-slate-400 text-white" : active ? "border-brand" : "border-slate-300"}`} aria-hidden="true">
-              {done ? <span className="text-xs leading-none">✓</span> : active ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-brand" /> : null}
-            </span>
-            <span className={`text-sm leading-6 ${active ? "font-medium text-ink" : done ? "text-slate-500" : "text-slate-400"}`}>{label}</span>
-          </li>;
-        })}</ol></section>
-        {job.status === "COMPLETED" && <section className="card"><h2 className="font-bold">Kết quả tra soát</h2><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-lg bg-red-50 p-3"><p className="text-xs text-red-700">Lỗi nghiêm trọng</p><p className="mt-1 text-2xl font-bold text-red-900">{job.critical_errors}</p></div><div className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-700">Cần lưu ý</p><p className="mt-1 text-2xl font-bold text-amber-900">{job.warnings}</p></div></div>{job.customer_notes && <div className="customer-message-scroll rich-text-content mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-6" dangerouslySetInnerHTML={{ __html: job.customer_notes }} />}<div className="mt-4 space-y-2">{downloads.map(({item, label}) => item ? <a key={item.id} className="btn-primary w-full" href={`/api/jobs/${job.job_code}/outputs/${item.id}/download`}>{label}<span className="ml-2 text-xs opacity-70">({fileSize(item.file_size)})</span></a> : null)}</div></section>}
+        {job.status === "SUBMITTED" && <div className="flex gap-3 border border-slate-300 bg-slate-50 p-4"><span className="mt-0.5 h-5 w-5 shrink-0 animate-pulse rounded-full bg-slate-400" aria-hidden="true" /><div><p className="font-semibold text-slate-900">Đang xếp hàng cho AI</p><p className="mt-1 text-sm leading-5 text-slate-700">Hồ sơ đã nhận; AI sẽ tự động bắt đầu rà soát.</p></div></div>}
+        {job.status === "PROCESSING" && <div className="flex gap-3 border border-brand bg-brand-soft p-4"><span className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-brand-soft border-t-brand" aria-hidden="true" /><div><p className="font-semibold text-brand-strong">Đang rà soát hồ sơ</p><p className="mt-1 text-sm leading-5 text-brand-strong">Hồ sơ lớn có thể cần thêm thời gian. Trạng thái tự cập nhật mỗi 5 giây.</p></div></div>}
+        {job.status === "FAILED" && <div className="border border-red-300 bg-red-50 p-4 text-sm text-red-900"><p>Audit tự động chưa hoàn tất.</p><button type="button" onClick={retryJob} disabled={busy} className="btn-primary mt-3 w-full">{busy ? "ĐANG THỬ LẠI…" : "THỬ LẠI AUDIT"}</button></div>}
+        {job.status === "WAITING_FOR_INFO" && <p className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">Hồ sơ cần được bổ sung. Vui lòng liên hệ đơn vị tra soát.</p>}
+        <JobTiming job={job} />
+        <ProjectChat jobCode={job.job_code} version={job.updated_at} />
+        {job.status === "COMPLETED" && <section className="card"><h2 className="display-face text-xl font-bold uppercase">Kết quả tra soát</h2><p className="mt-2 border border-amber-300 bg-amber-50 p-3 text-sm leading-5 text-amber-900">Kết quả tự động chưa phải phê duyệt hồ sơ. Người có chuyên môn cần đối chiếu nguồn và xác nhận trước khi sử dụng.</p><div className="mt-4 grid grid-cols-2 gap-3"><div className="border border-red-200 bg-red-50 p-3"><p className="text-xs text-red-700">Lỗi nghiêm trọng</p><p className="mt-1 text-2xl font-bold text-red-900">{job.critical_errors}</p></div><div className="border border-amber-200 bg-amber-50 p-3"><p className="text-xs text-amber-700">Cần lưu ý</p><p className="mt-1 text-2xl font-bold text-amber-900">{job.warnings}</p></div></div>{job.customer_notes && <div className="customer-message-scroll rich-text-content mt-4 border border-slate-200 bg-slate-50 p-4 text-sm leading-6" dangerouslySetInnerHTML={{ __html: job.customer_notes }} />}<div className="mt-4 space-y-2">{downloads.map(({item, label}) => item ? <a key={item.id} className="btn-primary w-full" href={`/api/jobs/${job.job_code}/outputs/${item.id}/download`}>{label}<span className="ml-2 text-xs opacity-70">({fileSize(item.file_size)})</span></a> : null)}</div></section>}
       </aside>
     </div>
   </Shell>;

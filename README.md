@@ -1,6 +1,18 @@
 # BOQ Audit Portal V1
 
-Cổng web tối giản cho khách hàng gửi PDF bản vẽ, tùy chọn đính kèm dự toán Excel và thuyết minh PDF/Word, theo dõi trạng thái và nhận báo cáo Excel/PDF đánh dấu. Việc tra soát chuyên môn ở V1 được admin thực hiện thủ công ngoài hệ thống; ứng dụng chỉ quản lý quy trình và tệp.
+New session limits, durable audit timing and SBTech AI project chat: see [feature rollout](FEATURE_ROLLOUT.md) for setup, migration, verification and deployment steps.
+
+Cổng web nội bộ để người dùng gửi PDF bản vẽ, tùy chọn đính kèm dự toán Excel và thuyết minh PDF/Word, theo dõi trạng thái và nhận báo cáo Excel/PDF đánh dấu. Hệ thống dùng Codex để tạo báo cáo; người có chuyên môn vẫn phải đối chiếu nội dung trước khi sử dụng.
+
+### Pilot chất lượng BOQ
+
+`COMPLETED` nghĩa là tiến trình/tệp đầu ra hoàn tất theo luồng hiện tại; trạng thái này **không xác nhận chất lượng, độ chính xác hay độ đầy đủ chuyên môn**. Admin chạy pilot nội bộ theo [runbook](docs/quality-pilot-runbook.md) và ghi bằng chứng trong [phiếu pilot](docs/quality-pilot-worksheet.md). Không coi báo cáo tự động là phê duyệt hồ sơ.
+
+Kết quả chuẩn bị tài liệu, rehearsal synthetic và regression cục bộ: [bản ghi kiểm chứng 2026-10-08](docs/quality-pilot-verification.md). Các kiểm tra chưa thực hiện được ghi riêng; đây không phải kết quả đánh giá chuyên môn BOQ.
+
+### CI/CD lên Google Compute Engine
+
+Quy trình GitHub Actions chạy kiểm thử trên pull request, build/push image theo commit SHA lên Artifact Registry và deploy có kiểm soát vào VM khi cập nhật `main`. Xem [hướng dẫn CI/CD và cấu hình IAM](docs/ci-cd-gce.md). Pipeline dùng Workload Identity Federation, không lưu service-account key; cần cấu hình GitHub variables, quyền VM và environment `production` trước khi bật deploy.
 
 ## Kiến trúc
 
@@ -8,9 +20,9 @@ Cổng web tối giản cho khách hàng gửi PDF bản vẽ, tùy chọn đín
 - FastAPI + SQLAlchemy + SQLite: API, authentication, authorization và nghiệp vụ job.
 - Local filesystem: file nằm trong `data/jobs`, không được Caddy public trực tiếp.
 - Caddy: reverse proxy duy nhất ở cổng 80/443.
-- Docker Compose: ba service `frontend`, `backend`, `caddy`.
+- Docker Compose: bốn service chạy dài hạn `frontend`, `backend`, `chat`, `caddy`; profile `chat-setup` có service khởi tạo credential một lần `chat-auth-init`.
 
-Frontend chỉ gọi REST API. Nghiệp vụ trạng thái, ownership, file output và điều kiện hoàn thành nằm hoàn toàn ở backend, nên V2/V3 có thể thêm worker mà không đổi giao diện.
+Frontend gọi REST API. Nghiệp vụ trạng thái, ownership, file output và điều kiện hoàn thành nằm ở backend; worker Codex hiện tạo báo cáo tự động.
 
 ## Development
 
@@ -43,6 +55,8 @@ Mở `http://localhost`. Không dùng password mẫu trong môi trường có ng
 
 Lần khởi động đầu tiên backend tạo admin từ `ADMIN_*`. Customer demo chỉ được tạo khi `DEMO_PASSWORD` được đặt rõ ràng; để trống thì không seed demo (đây là mặc định production). Tên đăng nhập là chuỗi không có khoảng trắng, không cần là email. Seed không ghi đè tài khoản đã tồn tại.
 
+Admin mở **Tài khoản** (`/admin/users`) để thêm, sửa, khóa hoặc xóa tài khoản khách hàng. Admin tự đặt mật khẩu tối thiểu 12 ký tự; để trống mật khẩu khi sửa để giữ mật khẩu hiện tại. Đổi mật khẩu, tên đăng nhập hoặc khóa tài khoản thu hồi phiên đăng nhập. Chỉ xóa được tài khoản chưa có hồ sơ; tài khoản có hồ sơ dùng chức năng khóa để giữ dữ liệu. Trang này không sửa/xóa tài khoản admin. Mật khẩu lưu dưới dạng hash và không thể xem lại. Nếu xóa customer demo, hãy bỏ `DEMO_PASSWORD` trong cấu hình để tránh seed lại khi khởi động.
+
 Tạo customer mới:
 
 ```bash
@@ -57,11 +71,11 @@ docker compose exec backend python -m app.cli set-password --username admin --pa
 
 ## Automatic Codex BOQ audit
 
-After a customer upload is stored, the backend starts an asynchronous audit for that job. The worker invokes `codex exec --json --approve-for-me`, explicitly requires the `boq-audit` skill on every run, writes audit artifacts under `data/jobs/<job-code>/output`, and updates the job status to `COMPLETED` or `FAILED`. The customer page polls `GET /api/jobs/{job_code}` every five seconds, so status and outputs come from the backend rather than simulated frontend progress.
+After a customer upload is stored, the backend starts an asynchronous audit for that job. The worker invokes `codex exec --json --approve-for-me`, explicitly requires the `boq-audit` skill on every run, and writes audit artifacts under `data/jobs/<job-code>/output`. A run with all required outputs stops at `REVIEW`; an admin must inspect and explicitly publish it as `COMPLETED` before customers can access the results. Missing required outputs fail the job. The customer page polls `GET /api/jobs/{job_code}` every five seconds, so status and outputs come from the backend rather than simulated frontend progress.
 
 The backend runtime must have the Codex CLI available and the complete skill bundle installed at `BOQ_AUDIT_SKILL_PATH`. The supplied Dockerfile installs the CLI, while Compose mounts the host directory from `BOQ_AUDIT_SKILL_HOST_PATH` read-only. Set both values in `.env`; the default container skill path is `/opt/codex/skills/boq-audit/SKILL.md`. Authenticate Codex once with ChatGPT in the persistent Docker credential volume before starting audits: `sudo docker compose run --rm --no-deps backend codex login`. Do not set `OPENAI_API_KEY`; this deployment intentionally uses the ChatGPT login flow. The worker treats a missing skill or Codex executable as a failed job and records the reason in the admin notes.
 
-Because uploaded drawings are untrusted engineering evidence, run the backend worker in an isolated container/job environment with a dedicated per-job workspace, no production credentials, and appropriate CPU, memory, timeout and disk limits.
+Because uploaded drawings are untrusted engineering evidence, direct audit execution requires a per-job filesystem boundary and no access to production credentials, with appropriate CPU, memory, timeout and disk limits. This is an operational requirement; the Compose mounts alone do not prove per-job isolation. The current backend Compose service mounts shared `/data` and the Codex home, so verify the deployed worker boundary before sending pilot files. See the [pilot runbook](docs/quality-pilot-runbook.md).
 
 ## Telegram notifications for customer PDF uploads
 
@@ -110,6 +124,7 @@ docker compose up -d
 - `GET /api/jobs/{job_code}/outputs/{output_id}/download`
 - `GET /api/jobs/{job_code}/outputs/{output_id}/view`
 - `GET /api/admin/jobs`, `GET|PATCH /api/admin/jobs/{job_code}`
+- `GET|POST /api/admin/users`, `PATCH|DELETE /api/admin/users/{user_id}` (chỉ admin; chỉ quản lý customer)
 - `GET /api/admin/jobs/{job_code}/input/download`
 - `GET /api/admin/jobs/{job_code}/estimate/download`
 - `GET /api/admin/jobs/{job_code}/narrative/download`
@@ -176,6 +191,14 @@ boq.example.com {
         max_size 1520MB
     }
 
+    @chatMessages {
+        method POST
+        path /api/jobs/*/chat/messages
+    }
+    request_body @chatMessages {
+        max_size 16KB
+    }
+
     @api path /api/*
     handle @api {
         reverse_proxy backend:8000
@@ -197,7 +220,7 @@ docker compose ps
 curl -fsS https://boq.example.com/api/health
 ```
 
-Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `DATA_DIR` có thể ghi và kho hồ sơ còn quota/dung lượng dự phòng. Response health có `storage_used_mb`, `storage_free_mb` và `storage_quota_mb` để hệ thống giám sát phát cảnh báo. Log của ba service được xoay ở 10 MB × 3 file.
+Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `DATA_DIR` có thể ghi và kho hồ sơ còn quota/dung lượng dự phòng. Response health có `storage_used_mb`, `storage_free_mb` và `storage_quota_mb` để hệ thống giám sát phát cảnh báo. Log của bốn service chạy dài hạn được xoay ở 10 MB × 3 file.
 
 ### Dữ liệu và quyền container
 
@@ -225,5 +248,5 @@ Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `
 
 - SQLite phù hợp một backend instance và tải MVP; không chạy nhiều replica ghi đồng thời.
 - MIME/magic-byte validation ngăn lỗi phổ biến nhưng không thay thế malware scanning chuyên dụng.
-- Chưa có self-registration, email notification, audit-history bất biến hay quy trình quên mật khẩu; tài khoản do admin tạo bằng CLI.
-- Không có xử lý tự động nội dung hồ sơ. Điểm mở rộng dự kiến là worker gọi cùng lớp dữ liệu/API để nhận input và tạo output.
+- Chưa có self-registration, email notification, audit-history bất biến hay quy trình quên mật khẩu; tài khoản khách hàng do admin tạo trên trang Tài khoản hoặc CLI.
+- Audit tự động chạy bằng worker Codex trong tiến trình backend; restart cần chờ audit hoàn tất hoặc thử lại hồ sơ bị gián đoạn.

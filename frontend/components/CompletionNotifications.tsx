@@ -70,5 +70,5 @@ export function CompletionNotifications() {
       localStorage.setItem(`boq-notifications-enabled:${userId}`, String(Date.now()));
     }
   }
-  return <button type="button" onClick={enable} className="rounded-lg px-3 py-2 text-sm font-semibold text-brand transition hover:bg-cyan-50">Bật thông báo</button>;
+  return <button type="button" onClick={enable} className="min-h-11 w-full px-4 text-left text-sm font-semibold text-brand-soft transition-colors hover:text-white">Bật thông báo</button>;
 }

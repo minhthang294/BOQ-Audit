@@ -1,3 +1,6 @@
+import json
+from types import SimpleNamespace
+
 from conftest import login
 from app.core.config import get_settings
 from app.core.database import SessionLocal
@@ -5,6 +8,7 @@ from app.main import upload_limiter
 from sqlalchemy import text
 
 from app.models.entities import Job, JobStatus
+from app.services import audit_runner
 
 
 def create_job(client, pdf_bytes, filename="drawing.pdf"):
@@ -21,7 +25,7 @@ def test_create_get_and_idor(client, pdf_bytes):
     assert created.status_code == 201
     code = created.json()["job_code"]
     assert code == "BOQ-000001"
-    assert created.json()["status"] == "PROCESSING"
+    assert created.json()["status"] == "SUBMITTED"
     assert client.get(f"/api/jobs/{code}").status_code == 200
     assert client.get(f"/api/jobs/{code}/input/download").content.startswith(b"%PDF")
     viewed = client.get(f"/api/jobs/{code}/input/view")
@@ -179,6 +183,37 @@ def test_customer_outputs_hidden_until_completed_and_cross_customer_idor(client,
     assert client.get(f"/api/jobs/{code}").status_code == 404
     assert client.get(f"/api/jobs/{code}/input/download").status_code == 404
     assert client.get(f"/api/jobs/{code}/outputs/{excel['id']}/download").status_code == 404
+
+
+def test_successful_audit_waits_for_admin_review(owner_client, pdf_bytes, monkeypatch, tmp_path):
+    code = create_job(owner_client, pdf_bytes).json()["job_code"]
+    with SessionLocal() as db:
+        job_id = db.query(Job.id).filter(Job.job_code == code).scalar()
+
+    settings = get_settings()
+    skill = tmp_path / "SKILL.md"
+    skill.write_text("test skill", encoding="utf-8")
+    monkeypatch.setattr(settings, "boq_audit_skill_path", skill)
+    monkeypatch.setattr(settings, "codex_command", "codex")
+    monkeypatch.setattr(audit_runner.shutil, "which", lambda _: "/usr/bin/codex")
+
+    def completed_run(*_, **kwargs):
+        output = kwargs["cwd"] / "output"
+        output.mkdir(exist_ok=True)
+        (output / "BOQ_Audit_Report.xlsx").write_bytes(b"PK\x03\x04report")
+        (output / "Annotated_Original.pdf").write_bytes(pdf_bytes)
+        message = {"type": "item.completed", "item": {"type": "agent_message", "text": "Lỗi nghiêm trọng: 1\nCảnh báo/cần lưu ý: 2"}}
+        return SimpleNamespace(stdout=json.dumps(message), stderr="", returncode=0)
+
+    monkeypatch.setattr(audit_runner.subprocess, "run", completed_run)
+    audit_runner._run_audit_job(job_id)
+
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        assert job.status == JobStatus.REVIEW
+        assert job.completed_at is None
+        assert {output.file_type.value for output in job.outputs} == {"EXCEL_REPORT", "ANNOTATED_PDF"}
+    assert owner_client.get(f"/api/jobs/{code}").json()["outputs"] == []
 
 
 def test_complete_requires_both_outputs(admin_client, pdf_bytes):

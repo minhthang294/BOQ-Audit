@@ -4,11 +4,12 @@ import re
 import shlex
 import shutil
 import subprocess
+from time import monotonic
 from pathlib import Path
 from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.models.entities import Job, JobOutput, JobStatus, OutputType, utcnow
+from app.models.entities import AuditRun, Job, JobOutput, JobStatus, OutputType, utcnow
 logger = logging.getLogger("boq-audit.runner")
 
 def _output_type(path: Path):
@@ -95,6 +96,38 @@ def _apply_codex_summary(job, message: str) -> None:
     job.customer_notes = message[:50000]
 
 def run_audit_job(job_id: int):
+    started = monotonic()
+    with SessionLocal() as db:
+        # A serialized claim prevents duplicate workers/attempt numbers.
+        from sqlalchemy import text
+        db.execute(text("BEGIN IMMEDIATE"))
+        job = db.get(Job, job_id)
+        if not job or job.status != JobStatus.SUBMITTED:
+            return
+        job.status = JobStatus.PROCESSING
+        job.started_at = utcnow()
+        run = AuditRun(job=job, attempt=len(job.audit_runs) + 1, started_at=job.started_at)
+        db.add(run)
+        db.commit()
+        run_id = run.id
+    try:
+        _run_audit_job(job_id)
+    except Exception:
+        with SessionLocal() as db:
+            _fail(db, job_id, "Audit tự động thất bại; cần kiểm tra worker.")
+        logger.exception("audit_worker_failed job_id=%s", job_id)
+    finally:
+        with SessionLocal() as db:
+            run = db.get(AuditRun, run_id)
+            job = db.get(Job, job_id)
+            if run and job:
+                run.ended_at = utcnow()
+                run.duration_seconds = max(0, monotonic() - started)
+                run.status = job.status.value
+                db.commit()
+
+
+def _run_audit_job(job_id: int):
     settings = get_settings()
     with SessionLocal() as db:
         job = db.scalar(select(Job).where(Job.id == job_id))
@@ -124,11 +157,12 @@ def run_audit_job(job_id: int):
                 job.admin_notes = "Thiếu báo cáo bắt buộc: " + ", ".join(x.value for x in missing) + "; files found: " + files
             elif result.returncode:
                 job.status = JobStatus.REVIEW
-                job.completed_at = utcnow()
+                job.completed_at = None
                 job.admin_notes = f"Codex trả mã {result.returncode} sau khi đã tạo đủ báo cáo; cần admin kiểm tra nội dung trước khi hoàn thành."
             else:
-                job.status = JobStatus.COMPLETED
-                job.completed_at = utcnow()
+                job.status = JobStatus.REVIEW
+                job.completed_at = None
+                job.admin_notes = "Audit tự động đã tạo đủ báo cáo; cần admin kiểm tra nội dung trước khi hoàn thành."
             db.commit()
         except Exception as exc:
             db.rollback(); _fail(db, job_id, f"Audit tự động thất bại: {exc}"); logger.exception("audit_job_failed job_id=%s", job_id)
