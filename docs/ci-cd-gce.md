@@ -5,7 +5,7 @@
 - Pull request: backend `pytest`, frontend typecheck/build, kiểm tra deploy guard/rollback và build thử ba Docker image. Không dùng thông tin xác thực GCP.
 - Build frontend Docker từng báo npm advisory (11, gồm 1 critical); `npm audit` trên máy dev không kiểm chứng được do DNS tới registry lỗi. Cần xem lại advisory trên GitHub/npm trước khi đặt security scan làm cổng deploy.
 - Push lên `main`: các kiểm tra trên phải đạt; GitHub Actions build ba image (`backend`, `frontend`, `chat`) với tag duy nhất `<commit-sha>-<run-id>-<attempt>` rồi đẩy lên Artifact Registry.
-- Deploy: job `production` chép Compose/script lên VM rồi pull đúng SHA, chờ health checks. Nếu có audit đang chờ/chạy, deploy dừng để không làm worker hiện tại bị ngắt. Nếu lần deploy mới không khỏe, script gắn lại image cũ đang chạy và rollback.
+- Deploy: job `production` chép Compose/script lên VM rồi pull đúng SHA, chờ health checks. Nếu có audit đang chờ/chạy, deploy dừng để không làm worker hiện tại bị ngắt. Nếu lần deploy mới không khỏe, script gắn lại image cũ đang chạy và rollback. Chat gateway là tùy chọn; khi đặt `CHAT_GATEWAY_TOKEN` đủ 32 ký tự trong `.env`, deploy tự bật profile và chép riêng `auth.json` vào volume giới hạn của Chat.
 - Chạy **Actions → CI/CD → Run workflow** trên `main` với `image_tag` trống để phát hành `main`; nhập release tag đã deploy để rollback thủ công.
 
 Ứng dụng vẫn là một VM/Compose/SQLite. Không deploy nhiều backend replica. Job deploy sẽ restart backend; guard giảm nguy cơ gián đoạn audit nhưng không thay thế maintenance window nếu cần bảo đảm tuyệt đối không có upload mới đúng lúc deploy. Migrations hiện tại chỉ thêm bảng; nếu sau này có migration phá vỡ tương thích, cần backup/restore và rollout riêng, vì rollback image không đảo ngược database.

@@ -42,6 +42,7 @@ services:
         max-file: "3"
 
   chat:
+    profiles: [chat]
     image: ${IMAGE_REGISTRY:-boq-audit}/chat:${IMAGE_TAG:-local}
     build: ./chat
     restart: unless-stopped
