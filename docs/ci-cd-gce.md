@@ -81,7 +81,7 @@ Trước khi cấp `roles/iam.serviceAccountUser` cho deploy SA hoặc bật OS 
 gcloud projects get-iam-policy "$GCE_PROJECT_ID" --flatten='bindings[].members' --filter="bindings.members:serviceAccount:${VM_SA}" --format='value(bindings.role)'
 ```
 
-SSH với OS Admin cho phép CI chạy lệnh root và lấy credential của runtime service account từ metadata server. Nếu policy có `roles/editor`, `roles/owner` hoặc quyền rộng tương tự, **dừng ở đây**: không cấp `roles/iam.serviceAccountUser` và không bật OS Login cho CI. Hãy tạo runtime service account riêng với đúng quyền ứng dụng cần, gắn nó vào VM trong maintenance window đã duyệt, rồi mới cấp `roles/iam.serviceAccountUser` cho deploy SA trên service account tối thiểu đó. Tài khoản runtime hiện tại của VM `boq-audit` có `roles/editor` ở cấp project nên chưa an toàn để cấp quyền SSH cho CI.
+SSH với OS Admin cho phép CI chạy lệnh root và lấy credential của runtime service account từ metadata server. Nếu policy có `roles/editor`, `roles/owner` hoặc quyền rộng tương tự, **dừng ở đây**: không cấp `roles/iam.serviceAccountUser` và không bật OS Login cho CI. Hãy tạo runtime service account riêng với đúng quyền ứng dụng cần, gắn nó vào VM trong maintenance window đã duyệt, rồi mới cấp `roles/iam.serviceAccountUser` cho deploy SA trên service account tối thiểu đó.
 
 Khi runtime service account đã được thu hẹp, cấp quyền OS Login trên instance và quyền `roles/iam.serviceAccountUser` trên service account đó. Chỉ bật OS Login sau khi đã xác minh người đang dùng SSH key metadata và chuẩn bị chuyển họ sang OS Login; khi bật, VM bỏ qua SSH key trong metadata. Firewall SSH cần giới hạn TCP/22 vào dải IAP `35.235.240.0/20`; project hiện có rule `default-allow-ssh` từ `0.0.0.0/0`, nên SSH trực tiếp hiện vẫn mở rộng hơn IAP. Không xóa rule đó trước khi kiểm tra tác động lên các VM khác trong project. Xác nhận scope VM có `storage-ro` hoặc `cloud-platform`; không thay scope của VM đang chạy nếu chưa lên kế hoạch dừng máy.
 
@@ -104,7 +104,7 @@ VM cần:
 
 1. OS Login bật; deploy SA có quyền OS Admin Login trên instance. Role này cho deploy SA sudo/root trên VM. Vì VM có service account gắn kèm, OS Login cũng yêu cầu `roles/iam.serviceAccountUser` trên service account đó; giữ runtime service account ở quyền tối thiểu. IAP TCP forwarding phải được bật và firewall chỉ cho TCP/22 từ dải IAP `35.235.240.0/20`. Không cấp `iam.serviceAccountUser` nếu VM đang dùng service account `Editor`/`Owner`.
 2. Docker Compose v2, `curl`, `gcloud` và app directory do bạn chọn. Thư mục có `.env` production, Caddyfile production/domain, `data/` hiện hữu và quyền đọc/ghi phù hợp. Workflow chỉ cập nhật `docker-compose.yml`, deploy script và `.deploy.env`; nó không ghi đè `.env`, dữ liệu hoặc Caddyfile.
-3. VM service account có quyền `roles/artifactregistry.reader` trên repository và scope `storage-ro` hoặc `cloud-platform`. Cấu hình Docker helper cho root, vì workflow chạy Compose bằng `sudo`:
+3. VM service account có quyền `roles/artifactregistry.reader` trên repository và scope `storage-ro` hoặc `cloud-platform`. Nếu Ops Agent đang chạy, cấp thêm `roles/logging.logWriter` và `roles/monitoring.metricWriter`. Cấu hình Docker helper cho root, vì workflow chạy Compose bằng `sudo`:
 
 ```bash
 sudo gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
@@ -114,12 +114,13 @@ Lệnh trên giả định gcloud trong VM dùng service account đính kèm VM.
 
 Bảo vệ `main` bằng PR bắt buộc và hai check `Tests`, `Build container images (PR)`; khi repo chỉ có một collaborator, để số review bắt buộc bằng 0 để không khóa merge. Khi có thêm người duyệt, yêu cầu ít nhất một review độc lập. Environment `production` cần reviewer và chỉ nhận branch `main`.
 
-Chỉ chạy workflow lần đầu sau khi runtime service account đã được thu hẹp, các SSH user đã được chuyển an toàn sang OS Login, IAP/SSH ingress đã giới hạn đúng, và Docker helper đã được cấu hình. Hiện tại chưa bật OS Login hoặc cấp `roles/iam.serviceAccountUser` cho deploy SA vì VM đang dùng runtime account có `roles/editor`; không chạy workflow deploy cho tới khi xử lý xong điểm này. Sau khi điều kiện an toàn đạt, push/merge vào `main` sẽ tự phát hành.
+Chỉ chạy workflow sau khi runtime service account đã được thu hẹp, các SSH user đã được chuyển an toàn sang OS Login, IAP/SSH ingress đã giới hạn đúng, Docker helper đã được cấu hình và deploy guard đã xác nhận không có audit đang chạy. Khi endpoint DNS trỏ thẳng tới external IP của VM, reserve/promote IP hiện tại thành static trước stop/start để tránh đổi địa chỉ; giá IP in-use áp dụng cho cả static và ephemeral.
 
 ## Dữ liệu, rollback và vận hành
 
 - Các image gắn tag `<full-Git-SHA>-<run-id>-<attempt>`, không dùng `latest`; repository bật immutable tags để tag không thể bị trỏ sang digest khác. Giữ image đã phát hành trong Artifact Registry đủ lâu để rollback. Script giữ image của service đang chạy bằng local `rollback` tag trước khi đổi phiên bản.
 - Pipeline không chạy `docker compose down -v`, không sửa `.env`, `data/`, database/file hay Caddyfile. Vẫn duy trì backup/snapshot cho persistent disk; deploy không thay thế backup.
 - Backend startup xử lý các job đang `SUBMITTED`/`PROCESSING` thành `FAILED`, nên guard sẽ từ chối deploy khi thấy job/audit đang chạy. Nếu deploy bị chặn, chờ xong rồi rerun workflow; không xóa trạng thái job để ép deploy.
+- Chat là profile tùy chọn. Để bật, thêm `CHAT_GATEWAY_TOKEN` từ 32 ký tự trong `.env`; deploy sẽ chạy `chat-auth-init` để chỉ copy `auth.json` vào volume riêng. Để trống token thì app chính deploy bình thường và gateway không khởi chạy.
 - Khi health check fail, workflow trả fail sau khi thử rollback image hiện tại. Nếu đây là lần phát hành đầu tiên và không có container cũ để giữ, phải kiểm tra logs trên VM thủ công.
 - Theo dõi dung lượng disk: Docker giữ image cũ phục vụ rollback; chưa bật tự xóa image trên VM hay cleanup policy Artifact Registry để tránh xóa nhầm image cần khôi phục.
