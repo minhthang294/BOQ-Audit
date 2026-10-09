@@ -69,13 +69,21 @@ Gán quyền deploy cho đúng VM. Các lệnh `add-iam-policy-binding` tạo qu
 ```bash
 VM_SA="$(gcloud compute instances describe "$GCE_INSTANCE" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --format='value(serviceAccounts[0].email)')"
 gcloud projects add-iam-policy-binding "$GCE_PROJECT_ID" --member="serviceAccount:${DEPLOY_SA}" --role=roles/compute.viewer
-gcloud projects add-iam-policy-binding "$GCE_PROJECT_ID" --member="serviceAccount:${DEPLOY_SA}" --role=roles/iap.tunnelResourceAccessor
 gcloud compute instances add-iam-policy-binding "$GCE_INSTANCE" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --member="serviceAccount:${DEPLOY_SA}" --role=roles/compute.osAdminLogin
-gcloud iam service-accounts add-iam-policy-binding "$VM_SA" --project "$GCE_PROJECT_ID" --member="serviceAccount:${DEPLOY_SA}" --role=roles/iam.serviceAccountUser
 gcloud artifacts repositories add-iam-policy-binding "$AR_REPOSITORY" --project "$GCP_PROJECT_ID" --location "$GCP_REGION" --member="serviceAccount:${VM_SA}" --role=roles/artifactregistry.reader
 ```
 
-Lấy `GCP_WIF_PROVIDER` từ resource name của provider vừa tạo: `projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL/providers/$PROVIDER`. Lệnh GitHub CLI ở trên dùng ID số cố định của repository/owner, tránh phụ thuộc tên repo có thể được tái sử dụng. Bật OS Login cho VM bằng `gcloud compute instances add-metadata "$GCE_INSTANCE" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --metadata=enable-oslogin=TRUE`; firewall SSH chỉ nhận TCP/22 từ IAP `35.235.240.0/20`. Xác nhận scope VM có `storage-ro` hoặc `cloud-platform`; không thay scope của VM đang chạy nếu chưa lên kế hoạch dừng máy.
+Gán `roles/iap.tunnelResourceAccessor` ở đúng VM, không phải cấp project: mở **Security → Identity-Aware Proxy → SSH and TCP Resources**, chọn instance rồi thêm deploy SA. Có thể giới hạn binding bằng IAM Condition `destination.port == 22`.
+
+Trước khi cấp `roles/iam.serviceAccountUser` cho deploy SA hoặc bật OS Login, kiểm tra mọi role của service account đang gắn vào VM:
+
+```bash
+gcloud projects get-iam-policy "$GCE_PROJECT_ID" --flatten='bindings[].members' --filter="bindings.members:serviceAccount:${VM_SA}" --format='value(bindings.role)'
+```
+
+SSH với OS Admin cho phép CI chạy lệnh root và lấy credential của runtime service account từ metadata server. Nếu policy có `roles/editor`, `roles/owner` hoặc quyền rộng tương tự, **dừng ở đây**: không cấp `roles/iam.serviceAccountUser` và không bật OS Login cho CI. Hãy tạo runtime service account riêng với đúng quyền ứng dụng cần, gắn nó vào VM trong maintenance window đã duyệt, rồi mới cấp `roles/iam.serviceAccountUser` cho deploy SA trên service account tối thiểu đó. Tài khoản runtime hiện tại của VM `boq-audit` có `roles/editor` ở cấp project nên chưa an toàn để cấp quyền SSH cho CI.
+
+Khi runtime service account đã được thu hẹp, cấp quyền OS Login trên instance và quyền `roles/iam.serviceAccountUser` trên service account đó. Chỉ bật OS Login sau khi đã xác minh người đang dùng SSH key metadata và chuẩn bị chuyển họ sang OS Login; khi bật, VM bỏ qua SSH key trong metadata. Firewall SSH cần giới hạn TCP/22 vào dải IAP `35.235.240.0/20`; project hiện có rule `default-allow-ssh` từ `0.0.0.0/0`, nên SSH trực tiếp hiện vẫn mở rộng hơn IAP. Không xóa rule đó trước khi kiểm tra tác động lên các VM khác trong project. Xác nhận scope VM có `storage-ro` hoặc `cloud-platform`; không thay scope của VM đang chạy nếu chưa lên kế hoạch dừng máy.
 
 Mapping và condition cho GitHub OIDC khóa theo ID số duy nhất của repository/owner và nhánh `main`:
 
@@ -94,7 +102,7 @@ Cho phép principal theo `attribute.repository_id/<REPOSITORY_ID>` impersonate c
 
 VM cần:
 
-1. OS Login bật; deploy SA có quyền OS Admin Login trên instance. Role này cho deploy SA sudo/root trên VM. Vì VM có service account gắn kèm, OS Login cũng yêu cầu `roles/iam.serviceAccountUser` trên service account đó; giữ runtime service account ở quyền tối thiểu. IAP TCP forwarding phải được bật và firewall chỉ cho TCP/22 từ dải IAP `35.235.240.0/20`.
+1. OS Login bật; deploy SA có quyền OS Admin Login trên instance. Role này cho deploy SA sudo/root trên VM. Vì VM có service account gắn kèm, OS Login cũng yêu cầu `roles/iam.serviceAccountUser` trên service account đó; giữ runtime service account ở quyền tối thiểu. IAP TCP forwarding phải được bật và firewall chỉ cho TCP/22 từ dải IAP `35.235.240.0/20`. Không cấp `iam.serviceAccountUser` nếu VM đang dùng service account `Editor`/`Owner`.
 2. Docker Compose v2, `curl`, `gcloud` và app directory do bạn chọn. Thư mục có `.env` production, Caddyfile production/domain, `data/` hiện hữu và quyền đọc/ghi phù hợp. Workflow chỉ cập nhật `docker-compose.yml`, deploy script và `.deploy.env`; nó không ghi đè `.env`, dữ liệu hoặc Caddyfile.
 3. VM service account có quyền `roles/artifactregistry.reader` trên repository và scope `storage-ro` hoặc `cloud-platform`. Cấu hình Docker helper cho root, vì workflow chạy Compose bằng `sudo`:
 
@@ -104,7 +112,9 @@ sudo gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
 
 Lệnh trên giả định gcloud trong VM dùng service account đính kèm VM. Xác nhận pull thử một image trước khi bật CI/CD. Không cấp Artifact Registry Writer cho VM.
 
-Bật branch protection cho `main`: yêu cầu workflow `Tests` thành công trước khi merge. Sau khi cấu hình variables, environment, IAM, OS Login/IAP và Docker helper, chạy workflow thủ công trên `main` lần đầu; sau đó push vào `main` sẽ tự phát hành.
+Bảo vệ `main` bằng PR bắt buộc và hai check `Tests`, `Build container images (PR)`; khi repo chỉ có một collaborator, để số review bắt buộc bằng 0 để không khóa merge. Khi có thêm người duyệt, yêu cầu ít nhất một review độc lập. Environment `production` cần reviewer và chỉ nhận branch `main`.
+
+Chỉ chạy workflow lần đầu sau khi runtime service account đã được thu hẹp, các SSH user đã được chuyển an toàn sang OS Login, IAP/SSH ingress đã giới hạn đúng, và Docker helper đã được cấu hình. Hiện tại chưa bật OS Login hoặc cấp `roles/iam.serviceAccountUser` cho deploy SA vì VM đang dùng runtime account có `roles/editor`; không chạy workflow deploy cho tới khi xử lý xong điểm này. Sau khi điều kiện an toàn đạt, push/merge vào `main` sẽ tự phát hành.
 
 ## Dữ liệu, rollback và vận hành
 
