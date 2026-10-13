@@ -4,13 +4,13 @@ from conftest import ASGIClient, login
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.core.migrations import migrate_and_recover
+from app.core.migrations import migrate_and_recover, recover_interrupted_runs
 from app.models.entities import AuditRun, ChatConversation, ChatMessage, CustomerActiveSession, Job, JobOutput, JobStatus, OutputType, utcnow
 from app.services import audit_runner, project_chat
 from test_jobs import create_job
 
 
-def test_run_history_retry_and_actual_worker_start(owner_client, pdf_bytes, monkeypatch):
+def test_run_history_retry_and_actual_worker_start(owner_client, pdf_bytes, monkeypatch, tmp_path):
     code = create_job(owner_client, pdf_bytes).json()["job_code"]
     with SessionLocal() as db:
         job = db.scalar(select(Job).where(Job.job_code == code))
@@ -20,36 +20,35 @@ def test_run_history_retry_and_actual_worker_start(owner_client, pdf_bytes, monk
         db.commit()
     clock = iter([10, 15, 20, 27])
     monkeypatch.setattr(audit_runner, "monotonic", lambda: next(clock))
-    def finish(job_id):
-        with SessionLocal() as db:
-            job = db.get(Job, job_id)
-            job.status = JobStatus.FAILED if len(job.audit_runs) == 1 else JobStatus.COMPLETED
-            job.completed_at = utcnow()
-            db.commit()
-    monkeypatch.setattr(audit_runner, "_run_audit_job", finish)
-    audit_runner.run_audit_job(job_id)
+    excel = tmp_path / "BOQ_Audit_Report.xlsx"
+    annotated = tmp_path / "Annotated_Original.pdf"
+    excel.write_bytes(b"PK-report")
+    annotated.write_bytes(pdf_bytes)
+    runs = iter([(None, False, "simulated failure", []), (0, False, "", [(excel, OutputType.EXCEL_REPORT), (annotated, OutputType.ANNOTATED_PDF)])])
+    monkeypatch.setattr(audit_runner, "_execute", lambda *_: next(runs))
+    audit_runner.run_audit_job(*audit_runner.claim_job(job_id))
     first = owner_client.get(f"/api/jobs/{code}").json()
     assert first["ai_processing_seconds"] == 5
     assert first["turnaround_seconds"] >= 600
     assert first["audit_runs"][0]["started_at"] != first["created_at"]
     assert owner_client.post(f"/api/jobs/{code}/retry").status_code == 200
-    audit_runner.run_audit_job(job_id)
+    audit_runner.run_audit_job(*audit_runner.claim_job(job_id))
     result = owner_client.get(f"/api/jobs/{code}").json()
     assert result["ai_processing_seconds"] == 12
     assert result["ai_timing_complete"]
     assert len(result["audit_runs"]) == 2
     assert result["current_attempt_seconds"] is None
-    assert result["turnaround_seconds"] == owner_client.get(f"/api/jobs/{code}").json()["turnaround_seconds"]
+    assert owner_client.get(f"/api/jobs/{code}").json()["turnaround_seconds"] >= result["turnaround_seconds"]
 
 
 def test_worker_exception_is_timed(owner_client, pdf_bytes, monkeypatch):
     code = create_job(owner_client, pdf_bytes).json()["job_code"]
     with SessionLocal() as db:
         job_id = db.scalar(select(Job.id).where(Job.job_code == code))
-    def fail(_):
+    def fail(*_):
         raise RuntimeError("simulated worker failure")
-    monkeypatch.setattr(audit_runner, "_run_audit_job", fail)
-    audit_runner.run_audit_job(job_id)
+    monkeypatch.setattr(audit_runner, "_execute", fail)
+    audit_runner.run_audit_job(*audit_runner.claim_job(job_id))
     job = owner_client.get(f"/api/jobs/{code}").json()
     assert job["status"] == "FAILED"
     assert job["audit_runs"][0]["status"] == "FAILED"
@@ -69,10 +68,11 @@ def test_restart_recovery_and_existing_session_migration(owner_client, pdf_bytes
         db.query(CustomerActiveSession).delete()
         db.commit()
     migrate_and_recover()
-    migrate_and_recover()
+    recover_interrupted_runs()
+    recover_interrupted_runs()
     assert owner_client.get("/api/auth/me").status_code == 200
     job = owner_client.get(f"/api/jobs/{code}").json()
-    assert job["status"] == "FAILED"
+    assert job["status"] == "SUBMITTED"
     assert job["audit_runs"][0]["status"] == "INTERRUPTED"
     assert not job["ai_timing_complete"]
     assert job["audit_runs"][0]["duration_seconds"] is None

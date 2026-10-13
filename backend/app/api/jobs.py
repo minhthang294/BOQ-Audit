@@ -14,7 +14,6 @@ from app.core.telegram import notify_pdf_upload
 from app.models.entities import Job, JobEstimateInput, JobNarrativeInput, JobStatus, User, UserRole, utcnow
 from app.schemas.api import AICapacityResponse, CodexUsageResponse, CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
 from app.storage.files import EXCEL_MIMES, NARRATIVE_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
-from app.services.audit_runner import run_audit_job
 from app.services.codex_usage import get_codex_usage
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -199,7 +198,6 @@ async def create_job(
             )
         db.commit()
         saved_job = owned_job(db, job_code, user)
-        background_tasks.add_task(run_audit_job, job_id)
         background_tasks.add_task(notify_pdf_upload, job_code, clean_project_name, display_name, user.email)
         return visible_customer_job(saved_job)
     except Exception:
@@ -219,7 +217,6 @@ async def create_job(
 @router.post("/{job_code}/retry", response_model=JobResponse)
 async def retry_job(
     job_code: str,
-    background_tasks: BackgroundTasks,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
@@ -237,13 +234,6 @@ async def retry_job(
     if active_jobs >= MAX_ACTIVE_JOBS_PER_USER:
         raise HTTPException(status.HTTP_409_CONFLICT, "Bạn đang có 2 hồ sơ được xử lý. Vui lòng chờ một hồ sơ hoàn thành trước khi thử lại.")
 
-    output_dir = (get_settings().jobs_dir / job.job_code / "output").resolve()
-    jobs_root = get_settings().jobs_dir.resolve()
-    if output_dir.parent != (jobs_root / job.job_code).resolve():
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Đường dẫn kết quả không hợp lệ")
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
     job.outputs.clear()
     job.status = JobStatus.SUBMITTED
     job.started_at = None
@@ -253,7 +243,6 @@ async def retry_job(
     job.critical_errors = 0
     job.warnings = 0
     db.commit()
-    background_tasks.add_task(run_audit_job, job.id)
     return visible_customer_job(owned_job(db, job_code, user))
 
 
@@ -281,7 +270,11 @@ async def rename_job(
 
 @router.delete("/{job_code}", response_model=MessageResponse)
 async def delete_job(job_code: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    db.rollback()
+    db.execute(text("BEGIN IMMEDIATE"))
     job = owned_job(db, job_code, user)
+    if job.status == JobStatus.PROCESSING or job.input_file_path == "pending":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Không thể xóa hồ sơ đang lưu hoặc xử lý")
     jobs_root = get_settings().jobs_dir.resolve()
     job_directory = (jobs_root / job.job_code).resolve()
     if job_directory.parent != jobs_root:

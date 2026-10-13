@@ -16,6 +16,8 @@ export interface Job {
   current_attempt_seconds: number | null; audit_runs: AuditRun[];
 }
 export interface AuditRun { attempt: number; started_at: string; ended_at: string | null; duration_seconds: number | null; status: string }
+export interface AttemptArtifact { name: string; size: number }
+export interface AttemptArtifacts { attempts: { attempt: number; status: string; artifacts: AttemptArtifact[] }[]; legacy: AttemptArtifact[] }
 export interface AICapacity { available: boolean; ready: boolean | null; checked_at: string }
 export interface ChatMessage { id: number; role: "user" | "assistant"; content: string; status: "PENDING" | "COMPLETED" | "FAILED"; created_at: string }
 export interface ChatSnapshot { enabled: boolean; messages: ChatMessage[]; busy: boolean }

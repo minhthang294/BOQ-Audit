@@ -24,6 +24,37 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  worker:
+    image: ${IMAGE_REGISTRY:-boq-audit}/backend:${IMAGE_TAG:-local}
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    init: true
+    stop_grace_period: 30s
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CODEX_HOME: /root/.codex
+    volumes:
+      - ./data:/data
+      - codex_home:/root/.codex
+      - ${BOQ_AUDIT_SKILL_HOST_PATH:-/home/thangpham/.agents/skills/boq-audit}:/opt/codex/skills/boq-audit:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker", "--health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   frontend:
     image: ${IMAGE_REGISTRY:-boq-audit}/frontend:${IMAGE_TAG:-local}
     build: ./frontend

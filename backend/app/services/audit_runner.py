@@ -1,16 +1,24 @@
 import json
 import logging
+import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
-from time import monotonic
 from pathlib import Path
-from sqlalchemy import select
+from threading import Event
+from time import monotonic, sleep
+from types import SimpleNamespace
+
+from sqlalchemy import select, text
+
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.entities import AuditRun, Job, JobOutput, JobStatus, OutputType, utcnow
+
 logger = logging.getLogger("boq-audit.runner")
+
 
 def _output_type(path: Path):
     name = path.name.lower()
@@ -20,26 +28,11 @@ def _output_type(path: Path):
         return OutputType.ANNOTATED_PDF
     return None
 
-def _record_outputs(db, job, workspace):
-    existing = {x.file_path for x in job.outputs}
-    detected_types = {x.file_type for x in job.outputs}
-    excluded = {Path(job.input_file_path).resolve()}
-    if job.estimate_input:
-        excluded.add(Path(job.estimate_input.file_path).resolve())
-    if job.narrative_input:
-        excluded.add(Path(job.narrative_input.file_path).resolve())
-    for path in sorted(workspace.rglob("*")):
-        if not path.is_file() or path.resolve() in excluded or path.name.startswith("codex-run."):
-            continue
-        kind = _output_type(path)
-        if not kind:
-            continue
-        detected_types.add(kind)
-        if str(path) in existing:
-            continue
-        db.add(JobOutput(job=job, file_type=kind, original_filename=path.name, stored_filename=path.name, file_path=str(path), file_size=path.stat().st_size))
-        existing.add(str(path))
-    return detected_types
+
+def _attempt_outputs(output_dir: Path):
+    return [(path, kind) for path in sorted(output_dir.rglob("*"))
+            if path.is_file() and (kind := _output_type(path))]
+
 
 def _prompt(job, skill_path, workspace):
     estimate = job.estimate_input.file_path if job.estimate_input else "not provided"
@@ -51,30 +44,44 @@ Workspace: {workspace}
 Drawing PDF: {job.input_file_path}
 Estimate: {estimate}
 Narrative: {narrative}
-Work only inside {workspace}. Run the complete three-pass BOQ Audit workflow, ledgers, manifest, validation and QA. Use Vietnamese for customer-facing reports. Write final deliverables into {workspace}/output using these exact filenames: BOQ_Audit_Report.xlsx, Annotated_Original.pdf, and Estimate_Report.xlsx when an estimate was supplied. Report PARTIAL/UNRESOLVED when required; never fabricate PASS metadata. Do not modify application source code. End the final response with two explicit grounded counters on separate lines: "Lỗi nghiêm trọng: N" and "Cảnh báo/cần lưu ý: N". Use 0 only when the completed ledgers support zero; unresolved items count as warnings, not verified critical errors."""
+Read source inputs at their listed paths. Keep every write inside {workspace}; do not modify source inputs or application files. Run the complete three-pass BOQ Audit workflow, ledgers, manifest, validation and QA. Use Vietnamese for customer-facing reports. Write final deliverables into {workspace}/output using these exact filenames: BOQ_Audit_Report.xlsx, Annotated_Original.pdf, and Estimate_Report.xlsx when an estimate was supplied. Report PARTIAL/UNRESOLVED when required; never fabricate PASS metadata. End the final response with two explicit grounded counters on separate lines: "Lỗi nghiêm trọng: N" and "Cảnh báo/cần lưu ý: N". Use 0 only when the completed ledgers support zero; unresolved items count as warnings, not verified critical errors."""
 
-def _final_message(raw: str) -> str:
-    messages = []
-    for line in raw.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        item = event.get("item", {})
-        if event.get("type") == "item.completed" and item.get("type") == "agent_message":
-            text = item.get("text") or item.get("message") or ""
-            if text:
-                messages.append(text)
-        elif event.get("type") == "agent_message" and event.get("text"):
-            messages.append(event["text"])
-    return messages[-1].strip() if messages else ""
 
-def _reported_count(text: str, patterns: tuple[str, ...]) -> int | None:
+def _final_message(log_path: Path) -> str:
+    message = ""
+    with log_path.open(encoding="utf-8", errors="replace") as log:
+        while line := log.readline(1_000_001):
+            if len(line) > 1_000_000:
+                while line and not line.endswith("\n"):
+                    line = log.readline(1_000_001)
+                continue
+            try:
+                event = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(event, dict):
+                continue
+            item = event.get("item") or {}
+            if not isinstance(item, dict):
+                continue
+            if event.get("type") == "item.completed" and item.get("type") == "agent_message":
+                candidate = item.get("text") or item.get("message")
+            elif event.get("type") == "agent_message":
+                candidate = event.get("text")
+            else:
+                continue
+            if isinstance(candidate, str) and candidate:
+                message = candidate
+    return message.strip()[:50000]
+
+
+def _reported_count(message: str, patterns: tuple[str, ...]) -> int | None:
     for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE | re.UNICODE)
+        match = re.search(pattern, message, flags=re.IGNORECASE | re.UNICODE)
         if match:
             return int(match.group(1))
     return None
+
 
 def _apply_codex_summary(job, message: str) -> None:
     if not message:
@@ -93,81 +100,161 @@ def _apply_codex_summary(job, message: str) -> None:
         job.critical_errors = critical
     if warnings is not None:
         job.warnings = warnings
-    job.customer_notes = message[:50000]
+    job.customer_notes = message
 
-def run_audit_job(job_id: int):
-    started = monotonic()
+
+def claim_job(job_id: int | None = None) -> tuple[int, int] | None:
+    """Claim a ready queued job and create its attempt in one SQLite transaction."""
     with SessionLocal() as db:
-        # A serialized claim prevents duplicate workers/attempt numbers.
-        from sqlalchemy import text
         db.execute(text("BEGIN IMMEDIATE"))
-        job = db.get(Job, job_id)
-        if not job or job.status != JobStatus.SUBMITTED:
-            return
-        job.status = JobStatus.PROCESSING
-        job.started_at = utcnow()
-        run = AuditRun(job=job, attempt=len(job.audit_runs) + 1, started_at=job.started_at)
-        db.add(run)
-        db.commit()
-        run_id = run.id
-    try:
-        _run_audit_job(job_id)
-    except Exception:
-        with SessionLocal() as db:
-            _fail(db, job_id, "Audit tự động thất bại; cần kiểm tra worker.")
-        logger.exception("audit_worker_failed job_id=%s", job_id)
-    finally:
-        with SessionLocal() as db:
-            run = db.get(AuditRun, run_id)
-            job = db.get(Job, job_id)
-            if run and job:
-                run.ended_at = utcnow()
-                run.duration_seconds = max(0, monotonic() - started)
-                run.status = job.status.value
-                db.commit()
-
-
-def _run_audit_job(job_id: int):
-    settings = get_settings()
-    with SessionLocal() as db:
-        job = db.scalar(select(Job).where(Job.id == job_id))
-        if not job: return
-        job_dir = (settings.jobs_dir / job.job_code).resolve(); output_dir = job_dir / "output"; output_dir.mkdir(parents=True, exist_ok=True)
-        skill = settings.boq_audit_skill_path.resolve()
-        if not skill.is_file(): return _fail(db, job_id, f"Không tìm thấy boq-audit skill tại {skill}")
-        cmd = shlex.split(settings.codex_command)
-        if not cmd or shutil.which(cmd[0]) is None: return _fail(db, job_id, "Không tìm thấy Codex CLI trên audit worker")
-        job.status = JobStatus.PROCESSING; job.started_at = job.started_at or utcnow(); db.commit()
-        try:
-            result = subprocess.run([*cmd, "exec", "--json", "--approve-for-me", "--skip-git-repo-check", _prompt(job, skill, job_dir)], cwd=job_dir, capture_output=True, text=True, timeout=settings.codex_timeout_seconds, check=False)
-            (job_dir / "codex-run.jsonl").write_text(result.stdout, encoding="utf-8")
-            (job_dir / "codex-run.stderr.log").write_text(result.stderr, encoding="utf-8")
-            # Codex can generate valid deliverables and still return non-zero when a
-            # later validation/coverage command is BLOCKED. Persist files first so
-            # admin can inspect partial results instead of losing them on rollback.
-            detected_types = _record_outputs(db, job, job_dir)
-            db.flush()
-            _apply_codex_summary(job, _final_message(result.stdout))
-            required = {OutputType.EXCEL_REPORT, OutputType.ANNOTATED_PDF} | ({OutputType.ESTIMATE_REPORT} if job.estimate_input else set())
-            missing = required - detected_types
-            if missing:
-                files = ", ".join(str(x.relative_to(job_dir)) for x in job_dir.rglob("*") if x.is_file() and not x.name.startswith("codex-run."))[:2000]
+        query = select(Job).where(Job.status == JobStatus.SUBMITTED).order_by(Job.created_at, Job.id)
+        if job_id is not None:
+            query = query.where(Job.id == job_id)
+        for job in db.scalars(query):
+            if job.input_file_path == "pending":
+                continue
+            if not Path(job.input_file_path).is_file():
                 job.status = JobStatus.FAILED
                 job.completed_at = utcnow()
-                job.admin_notes = "Thiếu báo cáo bắt buộc: " + ", ".join(x.value for x in missing) + "; files found: " + files
-            elif result.returncode:
-                job.status = JobStatus.REVIEW
-                job.completed_at = None
-                job.admin_notes = f"Codex trả mã {result.returncode} sau khi đã tạo đủ báo cáo; cần admin kiểm tra nội dung trước khi hoàn thành."
-            else:
-                job.status = JobStatus.REVIEW
-                job.completed_at = None
-                job.admin_notes = "Audit tự động đã tạo đủ báo cáo; cần admin kiểm tra nội dung trước khi hoàn thành."
+                job.admin_notes = "Không tìm thấy tệp đầu vào đã lưu; vui lòng tải lại hồ sơ."
+                continue
+            attempt = max((run.attempt for run in job.audit_runs), default=0) + 1
+            job.status = JobStatus.PROCESSING
+            job.started_at = utcnow()
+            job.completed_at = None
+            run = AuditRun(job=job, attempt=attempt, started_at=job.started_at)
+            db.add(run)
             db.commit()
-        except Exception as exc:
-            db.rollback(); _fail(db, job_id, f"Audit tự động thất bại: {exc}"); logger.exception("audit_job_failed job_id=%s", job_id)
+            return job.id, run.id
+        db.commit()
+    return None
 
-def _fail(db, job_id, message):
-    job = db.scalar(select(Job).where(Job.id == job_id))
-    if job:
-        job.status = JobStatus.FAILED; job.completed_at = utcnow(); job.admin_notes = message[:10000]; db.commit()
+
+def _leader_exited(process: subprocess.Popen) -> bool:
+    status = os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    return bool(status and status.si_pid)
+
+
+def _stop_group(process: subprocess.Popen) -> None:
+    # Keep the leader unreaped while its numeric PID is used as the process-group ID.
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        process.wait()
+        return
+    try:
+        deadline = monotonic() + 5
+        while monotonic() < deadline:
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                break
+            sleep(0.05)
+    except ChildProcessError:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait()
+
+
+def _execute(job: Job, attempt: int, stop: Event, heartbeat) -> tuple[int | None, bool, str, list[tuple[Path, OutputType]]]:
+    settings = get_settings()
+    workspace = (settings.jobs_dir / job.job_code / "attempts" / str(attempt)).resolve()
+    output_dir = workspace / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    skill = settings.boq_audit_skill_path.resolve()
+    if not skill.is_file():
+        raise RuntimeError(f"Không tìm thấy boq-audit skill tại {skill}")
+    cmd = shlex.split(settings.codex_command)
+    if not cmd or shutil.which(cmd[0]) is None:
+        raise RuntimeError("Không tìm thấy Codex CLI trên audit worker")
+    stdout_path = workspace / "codex-run.jsonl"
+    stderr_path = workspace / "codex-run.stderr.log"
+    with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
+        process = subprocess.Popen(
+            [*cmd, "exec", "--json", "--approve-for-me", "--skip-git-repo-check", _prompt(job, skill, workspace)],
+            cwd=workspace, stdout=stdout, stderr=stderr, start_new_session=True,
+        )
+        start = monotonic()
+        interrupted = timed_out = False
+        try:
+            while not _leader_exited(process):
+                heartbeat()
+                if stop.is_set():
+                    interrupted = True
+                    break
+                if monotonic() - start >= settings.codex_timeout_seconds:
+                    timed_out = True
+                    break
+                stop.wait(1)
+        finally:
+            _stop_group(process)
+    if interrupted:
+        return None, True, "", []
+    if timed_out:
+        return None, False, "Audit tự động quá thời gian cho phép.", _attempt_outputs(output_dir)
+    return process.returncode, False, _final_message(stdout_path), _attempt_outputs(output_dir)
+
+
+def _finish(job_id: int, run_id: int, started: float, returncode: int | None, message: str, outputs: list[tuple[Path, OutputType]]) -> bool:
+    with SessionLocal() as db:
+        db.execute(text("BEGIN IMMEDIATE"))
+        job = db.get(Job, job_id)
+        run = db.get(AuditRun, run_id)
+        newest_id = db.scalar(select(AuditRun.id).where(AuditRun.job_id == job_id).order_by(AuditRun.attempt.desc()).limit(1))
+        if not job or not run or newest_id != run_id or run.status != "RUNNING" or job.status != JobStatus.PROCESSING:
+            logger.warning("audit_stale_finish job_id=%s run_id=%s", job_id, run_id)
+            return False
+        job.outputs.clear()
+        for path, kind in outputs:
+            job.outputs.append(JobOutput(file_type=kind, original_filename=path.name, stored_filename=path.name,
+                                         file_path=str(path), file_size=path.stat().st_size))
+        job.critical_errors = 0
+        job.warnings = 0
+        job.customer_notes = None
+        _apply_codex_summary(job, message if returncode is not None else "")
+        required = {OutputType.EXCEL_REPORT, OutputType.ANNOTATED_PDF}
+        if job.estimate_input:
+            required.add(OutputType.ESTIMATE_REPORT)
+        missing = required - {kind for _, kind in outputs}
+        if returncode is None or missing:
+            job.status = JobStatus.FAILED
+            job.completed_at = utcnow()
+            job.admin_notes = message if returncode is None else "Thiếu báo cáo bắt buộc: " + ", ".join(sorted(kind.value for kind in missing))
+        else:
+            job.status = JobStatus.REVIEW
+            job.completed_at = None
+            job.admin_notes = (f"Codex trả mã {returncode} sau khi đã tạo đủ báo cáo; cần admin kiểm tra nội dung trước khi hoàn thành."
+                               if returncode else "Audit tự động đã tạo đủ báo cáo; cần admin kiểm tra nội dung trước khi hoàn thành.")
+        run.ended_at = utcnow()
+        run.duration_seconds = max(0, monotonic() - started)
+        run.status = job.status.value
+        db.commit()
+        return True
+
+
+def run_audit_job(job_id: int, run_id: int, stop: Event | None = None, heartbeat=None) -> None:
+    """Execute an attempt claimed by the lock-holding worker."""
+    stop = stop or Event()
+    heartbeat = heartbeat or (lambda: None)
+    started = monotonic()
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        run = db.get(AuditRun, run_id)
+        if not job or not run or run.job_id != job_id:
+            return
+        attempt = run.attempt
+        execution_job = SimpleNamespace(
+            job_code=job.job_code, input_file_path=job.input_file_path,
+            estimate_input=SimpleNamespace(file_path=job.estimate_input.file_path) if job.estimate_input else None,
+            narrative_input=SimpleNamespace(file_path=job.narrative_input.file_path) if job.narrative_input else None,
+        )
+    try:
+        returncode, interrupted, message, outputs = _execute(execution_job, attempt, stop, heartbeat)
+    except Exception as exc:
+        logger.exception("audit_job_failed job_id=%s run_id=%s", job_id, run_id)
+        returncode, interrupted, message, outputs = None, stop.is_set(), f"Audit tự động thất bại: {exc}"[:10000], []
+    if not interrupted:
+        _finish(job_id, run_id, started, returncode, message, outputs)
