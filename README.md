@@ -20,7 +20,7 @@ Quy trình GitHub Actions chạy kiểm thử trên pull request, build/push ima
 - FastAPI + SQLAlchemy + SQLite: API, authentication, authorization và nghiệp vụ job.
 - Local filesystem: file nằm trong `data/jobs`, không được Caddy public trực tiếp.
 - Caddy: reverse proxy duy nhất ở cổng 80/443.
-- Docker Compose: bốn service chạy dài hạn `frontend`, `backend`, `chat`, `caddy`; profile `chat-setup` có service khởi tạo credential một lần `chat-auth-init`.
+- Docker Compose: `frontend`, `backend`, `worker`, `caddy` và tùy chọn `chat`; profile `chat-setup` có service khởi tạo credential một lần `chat-auth-init`.
 
 Frontend gọi REST API. Nghiệp vụ trạng thái, ownership, file output và điều kiện hoàn thành nằm ở backend; worker Codex hiện tạo báo cáo tự động.
 
@@ -71,11 +71,11 @@ docker compose exec backend python -m app.cli set-password --username admin --pa
 
 ## Automatic Codex BOQ audit
 
-After a customer upload is stored, the backend starts an asynchronous audit for that job. The worker invokes `codex exec --json --approve-for-me`, explicitly requires the `boq-audit` skill on every run, and writes audit artifacts under `data/jobs/<job-code>/output`. A run with all required outputs stops at `REVIEW`; an admin must inspect and explicitly publish it as `COMPLETED` before customers can access the results. Missing required outputs fail the job. The customer page polls `GET /api/jobs/{job_code}` every five seconds, so status and outputs come from the backend rather than simulated frontend progress.
+After a customer upload is fully stored, its `SUBMITTED` record forms a durable queue. The single Compose worker claims a ready job and invokes `codex exec --json --approve-for-me`, requiring the `boq-audit` skill on every run. New audit artifacts live under `data/jobs/<job-code>/attempts/<attempt>/output`; existing root outputs remain available for legacy jobs. A run with all required outputs stops at `REVIEW`; an admin must inspect and publish it as `COMPLETED` before customers can access results. Missing required outputs fail the job. The customer page polls `GET /api/jobs/{job_code}` every five seconds.
 
 The backend runtime must have the Codex CLI available and the complete skill bundle installed at `BOQ_AUDIT_SKILL_PATH`. The supplied Dockerfile installs the CLI, while Compose mounts the host directory from `BOQ_AUDIT_SKILL_HOST_PATH` read-only. Set both values in `.env`; the default container skill path is `/opt/codex/skills/boq-audit/SKILL.md`. Authenticate Codex once with ChatGPT in the persistent Docker credential volume before starting audits: `sudo docker compose run --rm --no-deps backend codex login`. Do not set `OPENAI_API_KEY`; this deployment intentionally uses the ChatGPT login flow. The worker treats a missing skill or Codex executable as a failed job and records the reason in the admin notes.
 
-Because uploaded drawings are untrusted engineering evidence, direct audit execution requires a per-job filesystem boundary and no access to production credentials, with appropriate CPU, memory, timeout and disk limits. This is an operational requirement; the Compose mounts alone do not prove per-job isolation. The current backend Compose service mounts shared `/data` and the Codex home, so verify the deployed worker boundary before sending pilot files. See the [pilot runbook](docs/quality-pilot-runbook.md).
+Because uploaded drawings are untrusted engineering evidence, direct audit execution requires a per-job filesystem boundary and no access to production credentials, with appropriate CPU, memory, timeout and disk limits. This is an operational requirement; the Compose mounts alone do not prove per-job isolation. The backend and worker Compose services both mount shared `/data` and the Codex home, so verify the deployed worker boundary before sending pilot files. See the [pilot runbook](docs/quality-pilot-runbook.md) and the [recoverable audit implementation plan](docs/AUDIT_RECOVERY_PLAN.md).
 
 ## Telegram notifications for customer PDF uploads
 
@@ -98,15 +98,15 @@ Dữ liệu được bind mount ở `./data`, nên `docker compose down` hoặc 
 
 ### Backup và restore
 
-Script dùng SQLite backup API để snapshot database an toàn cả khi WAL đang bật, sau đó archive snapshot cùng `data/jobs`. Để database và filesystem khớp tuyệt đối trong cùng một thời điểm, vẫn nên tạm dừng ghi dữ liệu:
+Script dùng SQLite backup API để snapshot database an toàn cả khi WAL đang bật, sau đó archive snapshot cùng `data/jobs`. Để database và filesystem khớp cùng thời điểm, dừng ingress/upload, chờ audit đang chạy hoàn tất rồi dừng cả backend và worker trước khi backup:
 
 ```bash
-docker compose stop backend
+docker compose stop backend worker
 ./scripts/backup.sh
-docker compose start backend
+docker compose start backend worker
 ```
 
-Restore giữ lại dữ liệu hiện tại dưới tên `data.before-restore-<timestamp>`:
+Restore giữ lại dữ liệu hiện tại dưới tên `data.before-restore-<timestamp>`. Chỉ restore khi backend và worker đều đã dừng, để không tiến trình nào còn giữ DB hoặc khóa worker:
 
 ```bash
 docker compose down
@@ -128,6 +128,9 @@ docker compose up -d
 - `GET /api/admin/jobs/{job_code}/input/download`
 - `GET /api/admin/jobs/{job_code}/estimate/download`
 - `GET /api/admin/jobs/{job_code}/narrative/download`
+- `GET /api/admin/jobs/{job_code}/attempts` (attempt and legacy artifact listing)
+- `GET /api/admin/jobs/{job_code}/attempts/{attempt}/artifacts/{name}`
+- `GET /api/admin/jobs/{job_code}/legacy/artifacts/{name}`
 - `POST /api/admin/jobs/{job_code}/outputs`
 - `DELETE /api/admin/jobs/{job_code}/outputs/{output_id}`
 - `DELETE /api/admin/jobs/{job_code}`
@@ -220,7 +223,7 @@ docker compose ps
 curl -fsS https://boq.example.com/api/health
 ```
 
-Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `DATA_DIR` có thể ghi và kho hồ sơ còn quota/dung lượng dự phòng. Response health có `storage_used_mb`, `storage_free_mb` và `storage_quota_mb` để hệ thống giám sát phát cảnh báo. Log của bốn service chạy dài hạn được xoay ở 10 MB × 3 file.
+Backend healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `DATA_DIR` có thể ghi và kho hồ sơ còn quota/dung lượng dự phòng. Worker có healthcheck heartbeat riêng. Response backend health có `storage_used_mb`, `storage_free_mb` và `storage_quota_mb`. Log các service chạy dài hạn được xoay ở 10 MB × 3 file.
 
 ### Dữ liệu và quyền container
 
@@ -249,4 +252,4 @@ Healthcheck chỉ healthy khi ứng dụng chạy, SQLite truy cập được, `
 - SQLite phù hợp một backend instance và tải MVP; không chạy nhiều replica ghi đồng thời.
 - MIME/magic-byte validation ngăn lỗi phổ biến nhưng không thay thế malware scanning chuyên dụng.
 - Chưa có self-registration, email notification, audit-history bất biến hay quy trình quên mật khẩu; tài khoản khách hàng do admin tạo trên trang Tài khoản hoặc CLI.
-- Audit tự động chạy bằng worker Codex trong tiến trình backend; restart cần chờ audit hoàn tất hoặc thử lại hồ sơ bị gián đoạn.
+- Audit tự động chạy trong một Compose worker; job đã lưu hoàn chỉnh vẫn xếp hàng qua restart, còn audit bị ngắt bắt đầu attempt mới theo chính sách phục hồi.

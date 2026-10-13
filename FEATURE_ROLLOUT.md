@@ -30,13 +30,13 @@ The auth initializer copies only `auth.json` from the existing audit login into 
 
 1. Confirm the intended account's customer-facing deployment arrangement before public launch. Technical integration tests do not establish subscription/resale entitlement.
 2. Generate a secret using `openssl rand -hex 32` and put it in the existing `.env` as `CHAT_GATEWAY_TOKEN`. Do not commit it. Set `CHAT_GATEWAY_URL=http://chat:8010`; optional timeout/rate settings are documented in the example env files.
-3. Back up the database and job files. Wait for existing audits to finish before restarting: the worker is in-process, and the startup recovery deliberately marks interrupted/submitted work failed for explicit retry.
-4. Build the images and initialize chat credentials, then start the services:
+3. Back up the database and job files. The durable queue survives API and worker restarts; interrupted runs are recorded and automatically requeued once. For a consistent backup, stop ingress, drain active audits, then stop both backend and worker.
+4. Build the images and initialize chat credentials, then start backend, worker, frontend, and chat together:
 
 ```bash
 docker compose build backend frontend chat
 docker compose --profile chat-setup run --rm chat-auth-init
-docker compose up -d backend frontend chat
+docker compose up -d backend worker frontend chat
 docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 docker compose ps
 docker compose exec chat python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8010/health').status)"
@@ -52,7 +52,7 @@ On this machine Docker bridge DNS failed during package downloads. For a local b
 
 Startup adds `customer_active_sessions`, `audit_runs`, `chat_conversations`, and `chat_messages`. Existing tables/columns and job files are unchanged; no existing-column ALTER migration is needed. Migration is idempotent. Existing customer sessions are reduced to the newest usable session pointer; admin sessions remain valid.
 
-Recovery marks running audit records `INTERRUPTED` without inventing duration, changes in-process queued/processing jobs to `FAILED` for explicit retry, and marks pending chat questions failed. Do not use multiple backend replicas: recovery and the global chat lock assume the existing single-instance SQLite architecture.
+Recovery marks running audit records `INTERRUPTED` without inventing duration, requeues a job after its first interrupted attempt, and fails it after a second interruption for deliberate retry. A queued job with a missing input file is failed with an admin note so it cannot consume customer capacity indefinitely. Pending chat questions are marked failed. Do not use multiple backend replicas: recovery and the global chat lock assume the existing single-instance SQLite architecture.
 
 ## Verification
 

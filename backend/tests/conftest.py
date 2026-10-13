@@ -29,8 +29,8 @@ from app.models.entities import User, UserRole
 
 @pytest.fixture(autouse=True)
 def clean_database(monkeypatch):
-    # API checks never invoke a real authenticated audit or consume provider quota.
-    monkeypatch.setattr("app.api.jobs.run_audit_job", lambda _: None)
+    # The API only queues work; tests invoke the worker explicitly with fakes.
+    monkeypatch.setattr("starlette.background.BackgroundTasks.add_task", lambda *_: None)
     login_limiter.reset()
     TEST_DATA.mkdir(parents=True, exist_ok=True)
     Base.metadata.drop_all(engine)

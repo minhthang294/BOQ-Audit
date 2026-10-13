@@ -117,6 +117,22 @@ class AuditRunResponse(BaseModel):
     status: str
 
 
+class AttemptArtifactResponse(BaseModel):
+    name: str
+    size: int
+
+
+class AttemptArtifactGroup(BaseModel):
+    attempt: int
+    status: str
+    artifacts: list[AttemptArtifactResponse]
+
+
+class AttemptArtifactsResponse(BaseModel):
+    attempts: list[AttemptArtifactGroup]
+    legacy: list[AttemptArtifactResponse]
+
+
 class JobListResponse(BaseModel):
     items: list[JobResponse]
     total: int

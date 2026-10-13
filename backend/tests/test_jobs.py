@@ -1,6 +1,3 @@
-import json
-from types import SimpleNamespace
-
 from conftest import login
 from app.core.config import get_settings
 from app.core.database import SessionLocal
@@ -81,9 +78,9 @@ def test_admin_workflow_and_customer_download(client, pdf_bytes):
     client.post("/api/auth/logout")
     login(client, "admin", "admin-pass-123")
     assert client.get(f"/api/admin/jobs/{code}/input/download").status_code == 200
-    updated = client.patch(f"/api/admin/jobs/{code}", json={"status": "PROCESSING", "critical_errors": 7, "warnings": 11})
+    updated = client.patch(f"/api/admin/jobs/{code}", json={"status": "REVIEW", "critical_errors": 7, "warnings": 11})
     assert updated.status_code == 200
-    assert updated.json()["started_at"] is not None
+    assert updated.json()["status"] == "REVIEW"
     excel = client.post(
         f"/api/admin/jobs/{code}/outputs",
         data={"file_type": "EXCEL_REPORT"},
@@ -124,6 +121,7 @@ def test_customer_outputs_hidden_until_completed_and_cross_customer_idor(client,
     code = create_job(client, pdf_bytes).json()["job_code"]
     client.post("/api/auth/logout")
     login(client, "admin", "admin-pass-123")
+    assert client.patch(f"/api/admin/jobs/{code}", json={"status": "REVIEW"}).status_code == 200
     excel = client.post(
         f"/api/admin/jobs/{code}/outputs",
         data={"file_type": "EXCEL_REPORT"},
@@ -140,7 +138,7 @@ def test_customer_outputs_hidden_until_completed_and_cross_customer_idor(client,
     assert len(client.get(f"/api/jobs/{code}/outputs").json()) == 2
     assert client.get(f"/api/jobs/{code}/outputs/{excel['id']}/download").status_code == 200
 
-    for draft_status in ("PROCESSING", "REVIEW"):
+    for draft_status in ("WAITING_FOR_INFO", "REVIEW"):
         assert client.patch(f"/api/admin/jobs/{code}", json={"status": draft_status}).status_code == 200
         client.post("/api/auth/logout")
         login(client, "owner", "owner-pass-123")
@@ -195,18 +193,14 @@ def test_successful_audit_waits_for_admin_review(owner_client, pdf_bytes, monkey
     skill.write_text("test skill", encoding="utf-8")
     monkeypatch.setattr(settings, "boq_audit_skill_path", skill)
     monkeypatch.setattr(settings, "codex_command", "codex")
-    monkeypatch.setattr(audit_runner.shutil, "which", lambda _: "/usr/bin/codex")
-
-    def completed_run(*_, **kwargs):
-        output = kwargs["cwd"] / "output"
-        output.mkdir(exist_ok=True)
-        (output / "BOQ_Audit_Report.xlsx").write_bytes(b"PK\x03\x04report")
-        (output / "Annotated_Original.pdf").write_bytes(pdf_bytes)
-        message = {"type": "item.completed", "item": {"type": "agent_message", "text": "Lỗi nghiêm trọng: 1\nCảnh báo/cần lưu ý: 2"}}
-        return SimpleNamespace(stdout=json.dumps(message), stderr="", returncode=0)
-
-    monkeypatch.setattr(audit_runner.subprocess, "run", completed_run)
-    audit_runner._run_audit_job(job_id)
+    output = tmp_path / "output"
+    output.mkdir()
+    excel = output / "BOQ_Audit_Report.xlsx"
+    annotated = output / "Annotated_Original.pdf"
+    excel.write_bytes(b"PK\x03\x04report")
+    annotated.write_bytes(pdf_bytes)
+    monkeypatch.setattr(audit_runner, "_execute", lambda *_: (0, False, "Lỗi nghiêm trọng: 1\nCảnh báo/cần lưu ý: 2", [(excel, audit_runner.OutputType.EXCEL_REPORT), (annotated, audit_runner.OutputType.ANNOTATED_PDF)]))
+    audit_runner.run_audit_job(*audit_runner.claim_job(job_id))
 
     with SessionLocal() as db:
         job = db.get(Job, job_id)
