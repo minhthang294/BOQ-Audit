@@ -81,7 +81,7 @@ export function ProjectChat({ jobCode, version }: { jobCode: string; version: st
     <form onSubmit={send} className="border-t border-white/10 p-2.5">
       <label htmlFor="chat-message" className="sr-only">Câu hỏi của bạn</label>
       <div className="flex items-end gap-1.5 rounded-xl bg-white p-1.5 shadow-sm">
-        <textarea id="chat-message" value={message} onChange={e => setMessage(e.target.value)} maxLength={2000} rows={2} required placeholder={chat?.enabled ? "Hỏi về hồ sơ này…" : "AI hiện chưa sẵn sàng"} disabled={!chat?.enabled || sending || chat.busy} className="!min-h-12 !resize-none !border-0 !bg-transparent !px-2 !py-1.5 !text-sm !shadow-none !ring-0" />
+        <textarea id="chat-message" value={message} onChange={e => setMessage(e.target.value)} maxLength={2000} rows={2} required placeholder={chat?.enabled ? "Hỏi về hồ sơ này…" : "AI hiện chưa sẵn sàng"} disabled={!chat?.enabled || sending || chat.busy} className="!min-h-12 !resize-none !border-0 !bg-transparent !px-2 !py-1.5 !text-sm !text-ink !shadow-none !ring-0" />
         <button type="submit" aria-label="Gửi câu hỏi" title="Gửi câu hỏi" disabled={!chat?.enabled || sending || chat.busy || !message.trim()} className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand text-white transition-colors hover:bg-brand-strong disabled:cursor-not-allowed disabled:bg-slate-300"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="m5 12 7-7 7 7M12 5v14" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
       </div>
       <p className="mt-2 text-[11px] leading-4 text-slate-300">{chat?.busy || sending ? "AI đang trả lời…" : "Nội dung trao đổi chỉ thuộc hồ sơ này."}</p>
