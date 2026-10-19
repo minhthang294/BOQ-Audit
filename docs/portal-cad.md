@@ -24,6 +24,15 @@ sudo docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
 sudo docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
+Với local, Caddy nghe cổng 80 nên trình duyệt gửi `Host` **không kèm cổng** (`localhost`).
+Allow-list của CAD khớp tuyệt đối, nên tạo `.env` trong repo CAD (tệp đã nằm trong
+`.gitignore`) trước khi `up -d`, giữ cả dạng qua portal lẫn khi mở trực tiếp cổng 4173:
+
+```bash
+SB_CAD_ALLOWED_HOSTS=localhost,127.0.0.1,localhost:4173,127.0.0.1:4173
+SB_CAD_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1,http://localhost:4173,http://127.0.0.1:4173
+```
+
 Stack CAD trên VM (sau khi mã nguồn CAD đã nằm tại `/home/hello291994/CAD-Agent-Demo` và
 OpenCode state đã được cài):
 
