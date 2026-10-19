@@ -115,6 +115,9 @@ services:
   caddy:
     image: caddy:2.10-alpine
     restart: unless-stopped
+    networks:
+      - default
+      - sbtech-shared
     ports:
       - "80:80"
       - "443:443"
@@ -139,3 +142,9 @@ volumes:
   codex_home:
   chat_auth:
   chat_sessions:
+
+networks:
+  # Shared with the SBTech CAD Studio stack: Caddy reaches the CAD container as
+  # sbtech-cad:4173 after the /cad/ session check (docs/portal-cad.md).
+  sbtech-shared:
+    name: sbtech-shared

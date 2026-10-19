@@ -43,6 +43,35 @@
         reverse_proxy backend:8000
     }
 
+    # Trợ giúp vẽ (SBTech CAD Studio) đi sau phiên đăng nhập của portal: Caddy kiểm tra
+    # /api/auth/me rồi mới chuyển tiếp vào container CAD, sau khi bỏ tiền tố /cad.
+    # Chi tiết: docs/portal-cad.md.
+    redir /cad /cad/ 308
+
+    @cadUploads {
+        method POST
+        path /cad/*
+    }
+    request_body @cadUploads {
+        # CAD nhận tối đa 4 tệp ≤ 10MB qua multipart; 64MB là mức dư an toàn.
+        max_size 64MB
+    }
+
+    handle_path /cad/* {
+        forward_auth backend:8000 {
+            method GET
+            uri /api/auth/me
+            @unauthorized status 401
+            handle_response @unauthorized {
+                # Điều hướng trang → về màn hình đăng nhập; XHR nhận 401 để UI CAD báo lỗi.
+                @html header Accept *text/html*
+                redir @html /login 303
+                respond 401
+            }
+        }
+        reverse_proxy sbtech-cad:4173
+    }
+
     handle {
         reverse_proxy frontend:3000
     }
