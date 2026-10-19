@@ -14,8 +14,8 @@ export default function LoginPage() {
     event.preventDefault(); setError(""); setLoading(true);
     const form = new FormData(event.currentTarget);
     try {
-      const user = await api<User>("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: form.get("username"), password: form.get("password") }) });
-      router.push(user.role === "ADMIN" ? "/admin" : "/"); router.refresh();
+      await api<User>("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: form.get("username"), password: form.get("password") }) });
+      router.push("/tools"); router.refresh();
     } catch (e) { setError(e instanceof Error ? e.message : "Không thể đăng nhập"); } finally { setLoading(false); }
   }
   return <main className="min-h-screen bg-night text-white md:grid md:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
