@@ -26,3 +26,22 @@ export interface CodexUsage {
   available: boolean; plan_type?: string | null; ordinary_usage_allowed?: boolean | null;
   primary?: CodexUsageWindow | null; secondary?: CodexUsageWindow | null; checked_at: string;
 }
+
+export interface ExcelSheetInfo { name: string; max_row: number; max_column: number; hidden: boolean }
+export interface ExcelWorkbook {
+  code: string; filename: string; file_size: number; sheets: ExcelSheetInfo[]; active_sheet: string; created_at: string;
+}
+export type ExcelValue = string | number | boolean | null;
+export interface ExcelCell {
+  ref: string; row: number; col: number; value: ExcelValue; formula: string | null;
+  number_format: string | null; kind: "formula" | "value" | "blank"; comment?: string | null;
+}
+export interface ExcelSheetData {
+  sheet: string; max_row: number; max_column: number; row_start: number; col_start: number;
+  row_end: number; col_end: number; columns: string[]; rows: ExcelCell[][];
+  merged: string[]; truncated: boolean; freeze_panes: string | null; auto_filter: string | null; sheet_state: string;
+}
+export interface ExcelExplanation {
+  explanation: string; cells_examined: number; references_examined: number; truncated: boolean;
+}
+export interface ExcelExplainTurn { role: "user" | "assistant"; content: string }

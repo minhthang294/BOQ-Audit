@@ -12,8 +12,8 @@ export default function ToolPicker() {
   const cardClass = "focus-ring group flex flex-col justify-between border-2 border-slate-950 bg-white p-7 transition-colors hover:border-brand sm:p-9";
   const ctaClass = "mt-8 inline-flex items-center gap-3 text-base font-semibold text-brand";
   return <Shell>
-    <section className="mb-10"><div className="technical-rule mb-6" /><p className="eyebrow">Cổng công cụ</p><h1 className="page-title mt-2">Chọn<br />công cụ</h1><p className="mt-4 max-w-xl text-base leading-6 text-slate-600">Hai công cụ dùng chung một phiên đăng nhập. Mọi kết quả đều là bản nháp kèm bằng chứng và cần người có chuyên môn rà soát trước khi sử dụng.</p></section>
-    <section aria-label="Danh sách công cụ" className="grid gap-6 lg:grid-cols-2">
+    <section className="mb-10"><div className="technical-rule mb-6" /><p className="eyebrow">Cổng công cụ</p><h1 className="page-title mt-2">Chọn<br />công cụ</h1><p className="mt-4 max-w-xl text-base leading-6 text-slate-600">Ba công cụ dùng chung một phiên đăng nhập. Mọi kết quả đều là bản nháp kèm bằng chứng và cần người có chuyên môn rà soát trước khi sử dụng.</p></section>
+    <section aria-label="Danh sách công cụ" className="grid gap-6 lg:grid-cols-3">
       <Link href={boqHref} className={cardClass}>
         <div>
           <p className="eyebrow">Công cụ 01</p>
@@ -31,6 +31,15 @@ export default function ToolPicker() {
         </div>
         <span className={ctaClass}>Mở CAD Studio <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">→</span></span>
       </a>
+      <Link href="/excel" className={cardClass}>
+        <div>
+          <p className="eyebrow">Công cụ 03 · Beta</p>
+          <h2 className="section-title mt-3">Giải thích Excel</h2>
+          <p className="mt-4 max-w-md text-base leading-6 text-slate-600">Tải file BOQ, chọn ô, vùng hoặc sheet chưa hiểu; AI giải thích công thức, nguồn số liệu, cách kiểm tra và các lỗi tiềm ẩn.</p>
+          <p className="mt-4 border border-slate-300 bg-slate-50 p-3 text-sm leading-5 text-slate-700">AI chỉ đọc vùng được chọn và các ô tham chiếu, không sửa file gốc. Kết quả là bản nháp cần đối chiếu với bảng tính.</p>
+        </div>
+        <span className={ctaClass}>Mở trình giải thích <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">→</span></span>
+      </Link>
     </section>
   </Shell>;
 }

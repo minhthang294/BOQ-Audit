@@ -7,9 +7,10 @@ export async function proxy(request: NextRequest) {
     if (!response.ok) return NextResponse.redirect(new URL(response.headers.get("X-Session-Reason") === "replaced" ? "/login?replaced=1" : "/login?expired=1", request.url));
     const user = await response.json();
     if (request.nextUrl.pathname.startsWith("/admin") && user.role !== "ADMIN") return NextResponse.redirect(new URL("/", request.url));
-    if (!request.nextUrl.pathname.startsWith("/admin") && user.role === "ADMIN") return NextResponse.redirect(new URL("/admin", request.url));
+    const sharedTool = request.nextUrl.pathname.startsWith("/tools") || request.nextUrl.pathname.startsWith("/excel");
+    if (!request.nextUrl.pathname.startsWith("/admin") && user.role === "ADMIN" && !sharedTool) return NextResponse.redirect(new URL("/admin", request.url));
   } catch { return NextResponse.redirect(new URL("/login", request.url)); }
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/", "/jobs/:path*", "/admin/:path*"] };
+export const config = { matcher: ["/", "/jobs/:path*", "/admin/:path*", "/tools/:path*", "/excel/:path*"] };

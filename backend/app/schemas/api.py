@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
@@ -220,6 +221,77 @@ class ChatResponse(BaseModel):
     enabled: bool
     messages: list[ChatMessageResponse]
     busy: bool
+
+
+class ExcelSheetInfo(BaseModel):
+    name: str
+    max_row: int
+    max_column: int
+    hidden: bool = False
+
+
+class ExcelWorkbookResponse(BaseModel):
+    code: str
+    filename: str
+    file_size: int
+    sheets: list[ExcelSheetInfo]
+    active_sheet: str
+    created_at: datetime
+
+
+class ExcelCellResponse(BaseModel):
+    ref: str
+    row: int
+    col: int
+    value: Any | None = None
+    formula: str | None = None
+    number_format: str | None = None
+    kind: str = "blank"
+    comment: str | None = None
+
+
+class ExcelSheetResponse(BaseModel):
+    sheet: str
+    max_row: int
+    max_column: int
+    row_start: int
+    col_start: int
+    row_end: int
+    col_end: int
+    columns: list[str]
+    rows: list[list[ExcelCellResponse]]
+    merged: list[str] = Field(default_factory=list)
+    truncated: bool = False
+    freeze_panes: str | None = None
+    auto_filter: str | None = None
+    sheet_state: str = "visible"
+
+
+class ExcelExplainTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ExcelExplainRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sheet: str = Field(min_length=1, max_length=100)
+    scope: Literal["cell", "range", "sheet"] = "cell"
+    selection: str = Field(default="", max_length=80)
+    question: str = Field(default="", max_length=2000)
+    history: list[ExcelExplainTurn] = Field(default_factory=list, max_length=8)
+
+    @field_validator("selection", "question")
+    @classmethod
+    def clean_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class ExcelExplainResponse(BaseModel):
+    explanation: str
+    cells_examined: int
+    references_examined: int
+    truncated: bool
 
 
 JobResponse.model_rebuild()

@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     chat_timeout_seconds: int = Field(default=120, ge=10, le=300)
     chat_rate_limit: int = Field(default=20, ge=1, le=100)
     chat_rate_window_seconds: int = Field(default=3600, ge=60, le=86400)
+    excel_explain_max_mb: int = Field(default=25, ge=1, le=100)
+    excel_explain_max_uncompressed_mb: int = Field(default=200, ge=10, le=2048)
+    excel_explain_max_sheets: int = Field(default=50, ge=1, le=200)
+    excel_explain_max_selection_cells: int = Field(default=400, ge=1, le=2000)
+    excel_explain_max_reference_cells: int = Field(default=500, ge=0, le=3000)
+    excel_explain_max_context_chars: int = Field(default=70000, ge=5000, le=150000)
+    excel_explain_rate_limit: int = Field(default=20, ge=1, le=100)
+    excel_explain_rate_window_seconds: int = Field(default=3600, ge=60, le=86400)
+    excel_explain_retention_hours: int = Field(default=48, ge=1, le=720)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -80,6 +89,10 @@ class Settings(BaseSettings):
     @property
     def jobs_dir(self) -> Path:
         return self.data_dir / "jobs"
+
+    @property
+    def excel_dir(self) -> Path:
+        return self.data_dir / "excel"
 
 
 @lru_cache

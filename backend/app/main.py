@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text
 
-from app.api import admin, auth, chat, jobs, users
+from app.api import admin, auth, chat, excel, jobs, users
 from app.auth.security import hash_password
 from app.api.deps import session_user
 from app.core.migrations import migrate_and_recover
@@ -34,6 +34,7 @@ upload_lock = asyncio.Lock()
 async def lifespan(_: FastAPI):
     (settings.data_dir / "database").mkdir(parents=True, exist_ok=True)
     settings.jobs_dir.mkdir(parents=True, exist_ok=True)
+    settings.excel_dir.mkdir(parents=True, exist_ok=True)
     migrate_and_recover()
     with SessionLocal() as db:
         seeds = [
@@ -60,6 +61,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+app.include_router(excel.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 
 
@@ -67,6 +69,7 @@ def _is_upload_request(request: Request) -> bool:
     path = request.url.path
     return request.method == "POST" and (
         path == "/api/jobs"
+        or path == "/api/excel/upload"
         or (path.startswith("/api/admin/jobs/") and path.endswith("/outputs"))
     )
 
