@@ -25,7 +25,7 @@ MAX_CELL_TEXT = 600
 MAX_FORMULA_TEXT = 1600
 MAX_PREVIEW_ROWS = 200
 MAX_PREVIEW_COLS = 100
-SHEET_SAMPLE_ROWS = 15
+SHEET_SAMPLE_ROWS = 8
 SHEET_SAMPLE_COLS = 20
 
 
@@ -374,8 +374,8 @@ def _sheet_summary(formulas, ws_formula, ws_value) -> dict[str, Any]:
         validations = len(ws_formula.data_validations.dataValidation)
     except Exception:
         pass
-    scan_rows = min(max(1, ws_formula.max_row), 3000)
-    scan_cols = min(max(1, ws_formula.max_column), 60)
+    scan_rows = min(max(1, ws_formula.max_row), 1000)
+    scan_cols = min(max(1, ws_formula.max_column), 40)
     formula_examples: list[dict[str, Any]] = []
     formula_count = 0
     scanned = 0
@@ -384,7 +384,7 @@ def _sheet_summary(formulas, ws_formula, ws_value) -> dict[str, Any]:
             scanned += 1
             if isinstance(cell.value, str) and cell.value.startswith("="):
                 formula_count += 1
-                if len(formula_examples) < 40:
+                if len(formula_examples) < 20:
                     formula_examples.append(
                         {
                             "ref": cell.coordinate,
@@ -562,7 +562,12 @@ def build_context(
             if bounds["min_row"] > 1:
                 header_row = bounds["min_row"] - 1
                 for col in range(bounds["min_col"], min(bounds["max_col"], bounds["min_col"] + 29) + 1):
-                    context_cells.append(_cell_payload(ws_formula, ws_value, header_row, col))
+                    try:
+                        cp = _cell_payload(ws_formula, ws_value, header_row, col)
+                    except Exception as e:
+                        print("ERR cell", header_row, col, repr(e))
+                        continue
+                    context_cells.append(cp)
             if bounds["min_col"] > 1:
                 label_col = bounds["min_col"] - 1
                 for row in range(bounds["min_row"], min(bounds["max_row"], bounds["min_row"] + 29) + 1):
@@ -603,13 +608,21 @@ def build_context(
         raw = json.dumps(context, ensure_ascii=False)
         if len(raw) > settings.excel_explain_max_context_chars:
             truncated = True
-            while len(raw) > settings.excel_explain_max_context_chars and context["reference_cells"]:
+            # Trim the heaviest, least-essential parts first.
+            while len(raw) > settings.excel_explain_max_context_chars and context.get("reference_cells"):
                 context["reference_cells"].pop()
                 raw = json.dumps(context, ensure_ascii=False)
-            while len(raw) > settings.excel_explain_max_context_chars and context["context_cells"]:
+            while len(raw) > settings.excel_explain_max_context_chars and context.get("context_cells"):
                 context["context_cells"].pop()
                 raw = json.dumps(context, ensure_ascii=False)
-            while len(raw) > settings.excel_explain_max_context_chars and len(context["selected_cells"]) > 1:
+            sheet = context.get("sheet", {})
+            while len(raw) > settings.excel_explain_max_context_chars and sheet.get("formula_examples"):
+                sheet["formula_examples"].pop()
+                raw = json.dumps(context, ensure_ascii=False)
+            while len(raw) > settings.excel_explain_max_context_chars and sheet.get("sample_rows"):
+                sheet["sample_rows"].pop()
+                raw = json.dumps(context, ensure_ascii=False)
+            while len(raw) > settings.excel_explain_max_context_chars and len(context.get("selected_cells", [])) > 1:
                 context["selected_cells"].pop()
                 raw = json.dumps(context, ensure_ascii=False)
             context["evidence_scope"] += " Context đã được rút gọn do giới hạn dung lượng."
