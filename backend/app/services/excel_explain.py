@@ -23,8 +23,8 @@ from app.models.entities import ExcelWorkbook
 
 MAX_CELL_TEXT = 600
 MAX_FORMULA_TEXT = 1600
-MAX_PREVIEW_ROWS = 120
-MAX_PREVIEW_COLS = 30
+MAX_PREVIEW_ROWS = 200
+MAX_PREVIEW_COLS = 100
 SHEET_SAMPLE_ROWS = 15
 SHEET_SAMPLE_COLS = 20
 
@@ -109,9 +109,9 @@ def _zip_safety(path: Path) -> None:
         )
 
 
-def _load(path: Path, data_only: bool):
+def _load(path: Path, data_only: bool, read_only: bool = False):
     try:
-        return load_workbook(path, data_only=data_only, read_only=False, keep_links=False)
+        return load_workbook(path, data_only=data_only, read_only=read_only, keep_links=False)
     except Exception as exc:
         raise ExcelExplainError("Không đọc được file Excel. Hãy kiểm tra file có bị khóa hoặc hỏng không.") from exc
 
@@ -119,7 +119,7 @@ def _load(path: Path, data_only: bool):
 def inspect_workbook(path: Path) -> dict[str, Any]:
     settings = get_settings()
     _zip_safety(path)
-    workbook = _load(path, data_only=False)
+    workbook = _load(path, data_only=False, read_only=True)
     try:
         if not workbook.sheetnames:
             raise ExcelExplainError("File Excel không có sheet nào.")
@@ -156,38 +156,75 @@ def preview_sheet(
 ) -> dict[str, Any]:
     settings = get_settings()
     _zip_safety(path)
-    formulas = _load(path, data_only=False)
-    values = _load(path, data_only=True)
+    formulas = _load(path, data_only=False, read_only=True)
+    values = _load(path, data_only=True, read_only=True)
     try:
         if sheet_name not in formulas.sheetnames:
             raise ExcelExplainError("Sheet không tồn tại trong file.")
         ws_formula = formulas[sheet_name]
         ws_value = values[sheet_name]
-        max_rows = _clamp(max_rows, 1, MAX_PREVIEW_ROWS)
-        max_cols = _clamp(max_cols, 1, MAX_PREVIEW_COLS)
+        max_row = max(1, ws_formula.max_row or 1)
+        max_col = max(1, ws_formula.max_column or 1)
         row_start = max(1, row_start)
         col_start = max(1, col_start)
-        row_end = min(row_start + max_rows - 1, max(1, ws_formula.max_row))
-        col_end = min(col_start + max_cols - 1, max(1, ws_formula.max_column))
-        rows = [
-            [_cell_payload(ws_formula, ws_value, row, col) for col in range(col_start, col_end + 1)]
-            for row in range(row_start, row_end + 1)
-        ]
-        merged = []
-        for merged_range in ws_formula.merged_cells.ranges:
-            if (
-                merged_range.min_row <= row_end
-                and merged_range.max_row >= row_start
-                and merged_range.min_col <= col_end
-                and merged_range.max_col >= col_start
-            ):
-                merged.append(str(merged_range))
-                if len(merged) >= 80:
-                    break
+        max_rows = _clamp(max_rows, 1, MAX_PREVIEW_ROWS)
+        max_cols = _clamp(max_cols, 1, MAX_PREVIEW_COLS)
+        row_end = min(max_row, row_start + max_rows - 1)
+        col_end = min(max_col, col_start + max_cols - 1)
+        if row_end < row_start:
+            row_start, row_end = 1, min(max_row, row_start + max_rows - 1)
+        if col_end < col_start:
+            col_start, col_end = 1, min(max_col, col_start + max_cols - 1)
+
+        # Build a coordinate-keyed map for both workbooks (read-only iter_rows
+        # re-streams from the start of the file; doing it once per workbook is
+        # the cheap part and avoids O(n^2) random cell access).
+        formula_map: dict[tuple[int, int], Any] = {}
+        value_map: dict[tuple[int, int], Any] = {}
+        formula_format: dict[tuple[int, int], str | None] = {}
+        f_rows = list(ws_formula.iter_rows(min_row=row_start, max_row=row_end, min_col=col_start, max_col=col_end))
+        v_rows = list(ws_value.iter_rows(min_row=row_start, max_row=row_end, min_col=col_start, max_col=col_end))
+        for r_idx, (frow, vrow) in enumerate(zip(f_rows, v_rows)):
+            for c_idx, (fcell, vcell) in enumerate(zip(frow, vrow)):
+                row = r_idx + row_start
+                col = c_idx + col_start
+                key = (row, col)
+                raw = getattr(fcell, "value", None)
+                formula_map[key] = raw
+                formula_format[key] = getattr(fcell, "number_format", None)
+                if vcell is not None:
+                    vv = getattr(vcell, "value", None)
+                    if vv is not None:
+                        value_map[key] = vv
+
+
+        rows = []
+        for row in range(row_start, row_end + 1):
+            cells = []
+            for col in range(col_start, col_end + 1):
+                key = (row, col)
+                raw = formula_map.get(key)
+                formula = raw[:MAX_FORMULA_TEXT] if isinstance(raw, str) and raw.startswith("=") else None
+                value = value_map.get(key, None)
+                if formula is None and value is None:
+                    value = raw if raw is not None else None
+                kind = "formula" if formula else ("blank" if value is None else "value")
+                cells.append({
+                    "ref": f"{get_column_letter(col)}{row}",
+                    "row": row,
+                    "col": col,
+                    "value": _normalise(value),
+                    "formula": formula,
+                    "number_format": formula_format.get(key),
+                    "kind": kind,
+                })
+            rows.append(cells)
+
+        merged = []  # read-only mode does not expose mergeCells; kept for schema compat
         return {
             "sheet": sheet_name,
-            "max_row": max(1, ws_formula.max_row),
-            "max_column": max(1, ws_formula.max_column),
+            "max_row": max_row,
+            "max_column": max_col,
             "row_start": row_start,
             "col_start": col_start,
             "row_end": row_end,
@@ -195,9 +232,9 @@ def preview_sheet(
             "columns": [get_column_letter(col) for col in range(col_start, col_end + 1)],
             "rows": rows,
             "merged": merged,
-            "truncated": ws_formula.max_row > row_end or ws_formula.max_column > col_end,
-            "freeze_panes": str(ws_formula.freeze_panes) if ws_formula.freeze_panes else None,
-            "auto_filter": ws_formula.auto_filter.ref if ws_formula.auto_filter else None,
+            "truncated": max_row > row_end or max_col > col_end,
+            "freeze_panes": None,
+            "auto_filter": None,
             "sheet_state": ws_formula.sheet_state,
         }
     finally:
@@ -608,8 +645,15 @@ def _gateway_reply(context: dict[str, Any], message: str, history: list[dict], u
         with urlopen(request, timeout=settings.chat_timeout_seconds + 10) as response:
             raw = response.read(100001)
     except HTTPError as exc:
+        detail = ""
+        try:
+            detail = json.loads(exc.read()).get("detail", "")
+        except Exception:
+            detail = ""
         if exc.code == 409:
             raise ExcelAIBusy("AI đang trả lời một câu hỏi khác. Vui lòng thử lại sau.") from None
+        if detail:
+            raise ExcelAIUnavailable(f"AI tạm thời không phản hồi: {detail}") from None
         raise ExcelAIUnavailable("AI tạm thời không phản hồi. Vui lòng thử lại sau.") from None
     except Exception as exc:
         raise ExcelAIUnavailable("Không kết nối được AI. Vui lòng thử lại sau.") from exc

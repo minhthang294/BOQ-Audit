@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     boq_audit_skill_path: Path = Path("/opt/codex/skills/boq-audit/SKILL.md")
     chat_gateway_url: str = "http://chat:8010"
     chat_gateway_token: str = ""
-    chat_timeout_seconds: int = Field(default=180, ge=10, le=300)
+    chat_timeout_seconds: int = Field(default=300, ge=10, le=600)
     chat_rate_limit: int = Field(default=20, ge=1, le=100)
     chat_rate_window_seconds: int = Field(default=3600, ge=60, le=86400)
     excel_explain_max_mb: int = Field(default=25, ge=1, le=100)
