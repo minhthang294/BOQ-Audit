@@ -142,6 +142,12 @@ function uploadExcel(file: File, onProgress: (value: number) => void): Promise<E
 export default function ExcelExplainer() {
   const fileInput = useRef<HTMLInputElement>(null);
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(560);
+  const ROW_HEIGHT = 22;
+  const COL_WIDTH = 96;
+  const ROW_HEADER_WIDTH = 52;
   const [workbook, setWorkbook] = useState<ExcelWorkbook | null>(null);
   const [sheetData, setSheetData] = useState<ExcelSheetData | null>(null);
   const [activeSheet, setActiveSheet] = useState("");
@@ -175,6 +181,15 @@ export default function ExcelExplainer() {
   const selectionTitle = scope === "sheet" ? `${activeSheet} (toàn bộ sheet)` : `${activeSheet}!${selectionRef}`;
   const selectedCount = scope === "sheet" ? null : bounds ? (bounds.maxRow - bounds.minRow + 1) * (bounds.maxCol - bounds.minCol + 1) : 0;
 
+  const totalRows = sheetData?.rows.length || 0;
+  const totalCols = sheetData?.columns.length || 0;
+  const visibleRowCount = Math.max(8, Math.ceil(viewportHeight / ROW_HEIGHT) + 16);
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
+  const endIndex = Math.min(totalRows, startIndex + visibleRowCount);
+  const topSpacerHeight = startIndex * ROW_HEIGHT;
+  const bottomSpacerHeight = Math.max(0, (totalRows - endIndex) * ROW_HEIGHT);
+  const visibleRows = sheetData?.rows.slice(startIndex, endIndex) || [];
+
   const selectedFormulaCount = useMemo(() => {
     if (!sheetData) return 0;
     if (scope === "sheet") return sheetData.rows.flat().filter((cell) => cell.formula).length;
@@ -192,6 +207,16 @@ export default function ExcelExplainer() {
     window.addEventListener("mouseup", stopDragging);
     return () => window.removeEventListener("mouseup", stopDragging);
   }, []);
+
+  useEffect(() => {
+    if (!gridRef.current) return;
+    const element = gridRef.current;
+    const update = () => setViewportHeight(element.clientHeight || 560);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [sheetData]);
 
   useEffect(() => {
     if (scope !== "sheet" && selectionRef && selectionRef !== rangeInput) setRangeInput(selectionRef);
@@ -221,7 +246,7 @@ export default function ExcelExplainer() {
     setError("");
     try {
       const data = await api<ExcelSheetData>(
-        `/excel/${book.code}/sheet?name=${encodeURIComponent(sheetName)}&max_rows=60&max_cols=20`,
+        `/excel/${book.code}/sheet?name=${encodeURIComponent(sheetName)}&max_rows=2000&max_cols=100`,
       );
       setSheetData(data);
       setActiveSheet(sheetName);
@@ -451,46 +476,66 @@ export default function ExcelExplainer() {
                 <p className="ml-auto max-w-full truncate font-mono text-xs text-slate-500">{selectionTitle}{selectedCount !== null ? ` · ${selectedCount.toLocaleString("vi-VN")} ô` : ""}</p>
               </div>
 
-              <div className="max-h-[62vh] overflow-auto border-2 border-slate-950 bg-white">
+              <div className="flex items-center gap-2 border border-[#c9ccd1] bg-white px-3 py-2">
+                <span className="min-w-16 font-mono text-xs font-semibold text-[#5f6368]">{selectionTitle}</span>
+                <span className="text-[#c9ccd1]">ƒx</span>
+                <div className="min-w-0 flex-1 truncate font-mono text-xs text-[#202124]">{focusCell?.formula || (focusCell?.value === null ? "" : String(focusCell?.value ?? "")) || "\u00a0"}</div>
+              </div>
+
+              <div
+                ref={gridRef}
+                onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+                className="relative max-h-[72vh] overflow-auto border border-[#c9ccd1] bg-white shadow-inner"
+              >
                 {sheetLoading ? (
-                  <div className="flex min-h-64 items-center justify-center p-8 text-sm text-slate-500">Đang tải sheet...</div>
+                  <div className="flex min-h-72 items-center justify-center p-8 text-sm text-slate-500">Đang tải toàn bộ sheet...</div>
                 ) : sheetData ? (
-                  <table className="min-w-full border-separate border-spacing-0 text-xs select-none">
-                    <thead>
-                      <tr>
-                        <th className="sticky left-0 top-0 z-30 border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-right font-mono font-semibold text-slate-500">#</th>
-                        {sheetData.columns.map((column) => (
-                          <th key={column} className="sticky top-0 z-20 min-w-24 border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-left font-mono font-semibold text-slate-500">{column}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sheetData.rows.map((row) => (
-                        <tr key={row[0]?.row ?? "blank-row"}>
-                          <th className="sticky left-0 z-10 border-b border-r border-slate-300 bg-slate-100 px-2 py-1.5 text-right font-mono font-normal text-slate-500">{row[0]?.row}</th>
-                          {row.map((cell) => {
-                            const selected = scope !== "sheet" && bounds && cell.row >= bounds.minRow && cell.row <= bounds.maxRow && cell.col >= bounds.minCol && cell.col <= bounds.maxCol;
-                            const value = displayValue(cell, showFormulas);
-                            return (
-                              <td
-                                key={cell.ref}
-                                onMouseDown={(event) => beginSelection(cell, event)}
-                                onMouseEnter={() => extendSelection(cell)}
-                                className={`max-w-48 cursor-cell border-b border-r border-slate-200 px-2 py-1.5 align-top ${selected ? "bg-amber-100 ring-1 ring-inset ring-amber-500" : cell.formula ? "bg-sky-50/60" : "bg-white"} ${cell.kind === "blank" ? "text-slate-300" : "text-slate-800"}`}
-                                title={cell.formula || (cell.value === null ? "" : String(cell.value))}
-                              >
-                                <div className={`max-w-52 truncate ${cell.formula && !showFormulas ? "font-medium text-sky-900" : ""}`}>{value || "\u00a0"}</div>
-                              </td>
-                            );
-                          })}
+                  <>
+                    <div aria-hidden="true" style={{ height: topSpacerHeight }} />
+                    <table className="border-separate border-spacing-0 text-xs" style={{ tableLayout: "fixed", width: ROW_HEADER_WIDTH + totalCols * COL_WIDTH }}>
+                      <colgroup>
+                        <col style={{ width: ROW_HEADER_WIDTH }} />
+                        {sheetData.columns.map((column) => <col key={column} style={{ width: COL_WIDTH }} />)}
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th className="sticky left-0 top-0 z-40 border border-[#d9d9d9] bg-[#f8f9fa] px-1 py-1 text-center font-mono text-[10px] font-medium text-[#5f6368]">#</th>
+                          {sheetData.columns.map((column) => (
+                            <th key={column} className="sticky top-0 z-30 border border-[#d9d9d9] bg-[#f8f9fa] px-2 py-1 text-center font-mono text-[10px] font-medium text-[#5f6368]">{column}</th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {visibleRows.map((row) => (
+                          <tr key={row[0]?.row ?? "blank-row"} style={{ height: ROW_HEIGHT }}>
+                            <th className="sticky left-0 z-20 border border-[#d9d9d9] bg-[#f8f9fa] px-1 py-0 text-right font-mono text-[10px] font-normal text-[#5f6368]" style={{ height: ROW_HEIGHT }}>{row[0]?.row}</th>
+                            {row.map((cell) => {
+                              const selected = scope !== "sheet" && bounds && cell.row >= bounds.minRow && cell.row <= bounds.maxRow && cell.col >= bounds.minCol && cell.col <= bounds.maxCol;
+                              const value = displayValue(cell, showFormulas);
+                              return (
+                                <td
+                                  key={cell.ref}
+                                  onMouseDown={(event) => beginSelection(cell, event)}
+                                  onMouseEnter={() => extendSelection(cell)}
+                                  className={`cursor-cell border border-[#e2e2e2] px-2 py-0 align-middle ${selected ? "bg-[#d2e3fc] shadow-[inset_0_0_0_1px_#1a73e8]" : "bg-white"} ${cell.kind === "blank" ? "text-[#bdc1c6]" : "text-[#202124]"}`}
+                                  style={{ height: ROW_HEIGHT, lineHeight: `${ROW_HEIGHT - 2}px` }}
+                                  title={cell.formula || (cell.value === null ? "" : String(cell.value))}
+                                >
+                                  <div className="max-w-full truncate">{value || "\u00a0"}</div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div aria-hidden="true" style={{ height: bottomSpacerHeight }} />
+                  </>
                 ) : (
-                  <div className="flex min-h-64 items-center justify-center p-8 text-sm text-slate-500">Chưa có dữ liệu sheet.</div>
+                  <div className="flex min-h-72 items-center justify-center p-8 text-sm text-slate-500">Chưa có dữ liệu sheet.</div>
                 )}
               </div>
+
 
               {sheetData?.truncated && (
                 <p className="border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
