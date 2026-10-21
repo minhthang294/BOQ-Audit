@@ -564,8 +564,7 @@ def build_context(
                 for col in range(bounds["min_col"], min(bounds["max_col"], bounds["min_col"] + 29) + 1):
                     try:
                         cp = _cell_payload(ws_formula, ws_value, header_row, col)
-                    except Exception as e:
-                        print("ERR cell", header_row, col, repr(e))
+                    except Exception:
                         continue
                     context_cells.append(cp)
             if bounds["min_col"] > 1:
