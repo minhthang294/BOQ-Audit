@@ -17,6 +17,11 @@ type ChatMessage = { role: "user" | "assistant"; content: string; meta?: string 
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_SELECTION_CELLS = 400;
+const BLOCK_ROWS = 100;
+const ROW_HEIGHT = 22;
+const COL_WIDTH = 96;
+const ROW_HEADER_WIDTH = 52;
+const OVERSCAN = 8;
 
 function columnLetter(value: number) {
   let result = "";
@@ -145,11 +150,10 @@ export default function ExcelExplainer() {
   const gridRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(560);
-  const ROW_HEIGHT = 22;
-  const COL_WIDTH = 96;
-  const ROW_HEADER_WIDTH = 52;
   const [workbook, setWorkbook] = useState<ExcelWorkbook | null>(null);
-  const [sheetData, setSheetData] = useState<ExcelSheetData | null>(null);
+  const [sheetInfo, setSheetInfo] = useState<{ sheet: string; max_row: number; max_column: number; columns: string[] } | null>(null);
+  const [rowBlocks, setRowBlocks] = useState<Record<number, ExcelCell[][]>>({});
+  const [pendingBlocks, setPendingBlocks] = useState<Set<number>>(new Set());
   const [activeSheet, setActiveSheet] = useState("");
   const [anchor, setAnchor] = useState<Point | null>(null);
   const [focus, setFocus] = useState<Point | null>(null);
@@ -167,40 +171,80 @@ export default function ExcelExplainer() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const bounds = useMemo(() => {
-    if (!anchor || !focus) return null;
-    return {
-      minRow: Math.min(anchor.row, focus.row),
-      maxRow: Math.max(anchor.row, focus.row),
-      minCol: Math.min(anchor.col, focus.col),
-      maxCol: Math.max(anchor.col, focus.col),
-    };
-  }, [anchor, focus]);
-
-  const selectionRef = bounds ? rangeLabel(bounds) : "";
-  const selectionTitle = scope === "sheet" ? `${activeSheet} (toàn bộ sheet)` : `${activeSheet}!${selectionRef}`;
-  const selectedCount = scope === "sheet" ? null : bounds ? (bounds.maxRow - bounds.minRow + 1) * (bounds.maxCol - bounds.minCol + 1) : 0;
-
-  const totalRows = sheetData?.rows.length || 0;
-  const totalCols = sheetData?.columns.length || 0;
+  const blockRows = 100;
+  const totalRows = sheetInfo?.max_row ?? 0;
+  const totalCols = sheetInfo?.columns.length ?? 0;
   const visibleRowCount = Math.max(8, Math.ceil(viewportHeight / ROW_HEIGHT) + 16);
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 8);
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
   const endIndex = Math.min(totalRows, startIndex + visibleRowCount);
   const topSpacerHeight = startIndex * ROW_HEIGHT;
   const bottomSpacerHeight = Math.max(0, (totalRows - endIndex) * ROW_HEIGHT);
-  const visibleRows = sheetData?.rows.slice(startIndex, endIndex) || [];
 
-  const selectedFormulaCount = useMemo(() => {
-    if (!sheetData) return 0;
-    if (scope === "sheet") return sheetData.rows.flat().filter((cell) => cell.formula).length;
-    if (!bounds) return 0;
-    return sheetData.rows.flat().filter((cell) => cell.formula && cell.row >= bounds.minRow && cell.row <= bounds.maxRow && cell.col >= bounds.minCol && cell.col <= bounds.maxCol).length;
-  }, [sheetData, bounds, scope]);
+  const blocksRef = useRef(rowBlocks);
+  blocksRef.current = rowBlocks;
 
-  const focusCell = useMemo(() => {
-    if (!sheetData || !bounds) return null;
-    return sheetData.rows.flat().find((cell) => cell.row === bounds.minRow && cell.col === bounds.minCol) || null;
-  }, [sheetData, bounds]);
+  const pendingRef = useRef(pendingBlocks);
+  pendingRef.current = pendingBlocks;
+
+  const workbookRef = useRef(workbook);
+  workbookRef.current = workbook;
+
+  const activeSheetRef = useRef(activeSheet);
+  activeSheetRef.current = activeSheet;
+
+  const sheetInfoRef = useRef(sheetInfo);
+  sheetInfoRef.current = sheetInfo;
+
+  function rowBlockIndex(rowNumber: number) {
+    return Math.floor((rowNumber - 1) / blockRows);
+  }
+
+  function blockStartRow(blockIndex: number) {
+    return blockIndex * blockRows + 1;
+  }
+
+  async function loadBlock(blockIndex: number) {
+    const book = workbookRef.current;
+    const sheet = activeSheetRef.current;
+    const info = sheetInfoRef.current;
+    if (!book || !sheet || !info) return;
+    if (blocksRef.current[blockIndex] || pendingRef.current.has(blockIndex)) return;
+    setPendingBlocks((current) => {
+      const next = new Set(current);
+      next.add(blockIndex);
+      return next;
+    });
+    try {
+      const data = await api<ExcelSheetData>(
+        `/excel/${book.code}/sheet?name=${encodeURIComponent(sheet)}&row_start=${blockStartRow(blockIndex)}&max_rows=${blockRows}&max_cols=${Math.min(info.max_column, 100)}`,
+      );
+      setRowBlocks((current) => ({ ...current, [blockIndex]: data.rows }));
+      if (!sheetInfoRef.current) {
+        setSheetInfo({ sheet: data.sheet, max_row: data.max_row, max_column: data.max_column, columns: data.columns });
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Không tải được phần sheet.");
+    } finally {
+      setPendingBlocks((current) => {
+        const next = new Set(current);
+        next.delete(blockIndex);
+        return next;
+      });
+    }
+  }
+
+  async function ensureBlocks(startRow: number, endRow: number) {
+    if (totalRows === 0) return;
+    const first = rowBlockIndex(startRow);
+    const last = rowBlockIndex(endRow);
+    for (let index = first; index <= last; index++) {
+      void loadBlock(index);
+    }
+  }
+
+  useEffect(() => {
+    if (totalRows > 0) void ensureBlocks(startIndex + 1, endIndex);
+  }, [startIndex, endIndex, totalRows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const stopDragging = () => setDragging(false);
@@ -216,15 +260,19 @@ export default function ExcelExplainer() {
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [sheetData]);
-
-  useEffect(() => {
-    if (scope !== "sheet" && selectionRef && selectionRef !== rangeInput) setRangeInput(selectionRef);
-  }, [scope, selectionRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sheetInfo]);
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, busy]);
+
+  function getRow(rowNumber: number): ExcelCell[] | undefined {
+    const blockIndex = rowBlockIndex(rowNumber);
+    const block = rowBlocks[blockIndex];
+    if (!block) return undefined;
+    const localIndex = rowNumber - blockStartRow(blockIndex);
+    return block[localIndex];
+  }
 
   function pickFile(candidate: File | undefined) {
     if (!candidate) return;
@@ -244,16 +292,19 @@ export default function ExcelExplainer() {
   async function loadSheetFor(book: ExcelWorkbook, sheetName: string) {
     setSheetLoading(true);
     setError("");
+    setRowBlocks({});
+    setPendingBlocks(new Set());
+    setScrollTop(0);
+    if (gridRef.current) gridRef.current.scrollTop = 0;
     try {
       const data = await api<ExcelSheetData>(
-        `/excel/${book.code}/sheet?name=${encodeURIComponent(sheetName)}&max_rows=2000&max_cols=100`,
+        `/excel/${book.code}/sheet?name=${encodeURIComponent(sheetName)}&row_start=1&max_rows=${BLOCK_ROWS}&max_cols=100`,
       );
-      setSheetData(data);
+      setSheetInfo({ sheet: data.sheet, max_row: data.max_row, max_column: data.max_column, columns: data.columns });
+      setRowBlocks({ 0: data.rows });
       setActiveSheet(sheetName);
-      const first = data.rows[0]?.[0];
-      const point = first ? { row: first.row, col: first.col } : { row: data.row_start, col: data.col_start };
-      setAnchor(point);
-      setFocus(point);
+      setAnchor({ row: 1, col: 1 });
+      setFocus({ row: 1, col: 1 });
       setScope("cell");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không tải được sheet.");
@@ -286,7 +337,8 @@ export default function ExcelExplainer() {
       try { await api(`/excel/${workbook.code}`, { method: "DELETE" }); } catch {}
     }
     setWorkbook(null);
-    setSheetData(null);
+    setSheetInfo(null);
+    setRowBlocks({});
     setActiveSheet("");
     setMessages([]);
     setQuestion("");
@@ -323,10 +375,17 @@ export default function ExcelExplainer() {
     setFocus({ row: next.maxRow, col: next.maxCol });
     setScope(next.minRow === next.maxRow && next.minCol === next.maxCol ? "cell" : "range");
     setError("");
+    if (gridRef.current) {
+      gridRef.current.scrollTop = Math.max(0, (next.minRow - 1) * ROW_HEIGHT - 60);
+    }
+    void ensureBlocks(next.minRow, next.maxRow);
   }
 
   async function ask(suggestion?: string) {
-    if (!workbook || !sheetData || busy) return;
+    if (!workbook || !sheetInfo || busy) {
+      if (!sheetInfo) setError("Sheet chưa tải xong. Vui lòng thử lại.");
+      return;
+    }
     const content = (suggestion ?? question).trim();
     const currentScope = scope;
     const currentBounds = bounds;
@@ -368,9 +427,60 @@ export default function ExcelExplainer() {
     }
   }
 
+  const bounds = useMemo(() => {
+    if (!anchor || !focus) return null;
+    return {
+      minRow: Math.min(anchor.row, focus.row),
+      maxRow: Math.max(anchor.row, focus.row),
+      minCol: Math.min(anchor.col, focus.col),
+      maxCol: Math.max(anchor.col, focus.col),
+    };
+  }, [anchor, focus]);
+
+  const selectionRef = bounds ? rangeLabel(bounds) : "";
+  const selectionTitle = scope === "sheet" ? `${activeSheet} (toàn bộ sheet)` : `${activeSheet}!${selectionRef}`;
+  const selectedCount = scope === "sheet" ? null : bounds ? (bounds.maxRow - bounds.minRow + 1) * (bounds.maxCol - bounds.minCol + 1) : 0;
+
+  const selectedFormulaCount = useMemo(() => {
+    let count = 0;
+    Object.values(rowBlocks).forEach((block) => {
+      block.flat().forEach((cell) => {
+        if (cell?.formula && scope !== "sheet" && bounds && cell.row >= bounds.minRow && cell.row <= bounds.maxRow && cell.col >= bounds.minCol && cell.col <= bounds.maxCol) count++;
+      });
+    });
+    if (scope === "sheet") {
+      return Object.values(rowBlocks).reduce((acc, block) => acc + block.flat().filter((cell) => cell?.formula).length, 0);
+    }
+    return count;
+  }, [rowBlocks, bounds, scope]);
+
+  const focusCell = useMemo(() => {
+    if (!anchor) return null;
+    return getRow(anchor.row)?.[anchor.col - 1] ?? null;
+  }, [anchor, rowBlocks]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const suggestions = scope === "sheet"
     ? ["Tóm tắt cấu trúc và mục đích của sheet này", "Sheet này có những công thức quan trọng nào?", "Những lỗi hoặc dấu hiệu bất thường cần kiểm tra?"]
     : ["Giải thích công thức trong vùng này", "Số liệu này lấy từ đâu?", "Kiểm tra lỗi hoặc giả định tiềm ẩn"];
+
+  const columns = sheetInfo?.columns ?? [];
+  const visibleRows = useMemo(() => {
+    const result: (ExcelCell[] | undefined)[] = [];
+    for (let i = startIndex; i < endIndex; i++) {
+      result.push(getRow(i + 1));
+    }
+    return result;
+  }, [startIndex, endIndex, rowBlocks]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (totalRows > 0) {
+      const firstBlock = Math.floor(startIndex / BLOCK_ROWS);
+      const lastBlock = Math.floor(Math.max(startIndex, endIndex - 1) / BLOCK_ROWS);
+      for (let b = firstBlock; b <= lastBlock; b++) {
+        void loadBlock(b);
+      }
+    }
+  }, [startIndex, endIndex, totalRows, workbook, activeSheet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Shell wide>
@@ -488,45 +598,49 @@ export default function ExcelExplainer() {
                 className="relative max-h-[72vh] overflow-auto border border-[#c9ccd1] bg-white shadow-inner"
               >
                 {sheetLoading ? (
-                  <div className="flex min-h-72 items-center justify-center p-8 text-sm text-slate-500">Đang tải toàn bộ sheet...</div>
-                ) : sheetData ? (
+                  <div className="flex min-h-72 items-center justify-center p-8 text-sm text-slate-500">Đang tải sheet...</div>
+                ) : sheetInfo ? (
                   <>
                     <div aria-hidden="true" style={{ height: topSpacerHeight }} />
                     <table className="border-separate border-spacing-0 text-xs" style={{ tableLayout: "fixed", width: ROW_HEADER_WIDTH + totalCols * COL_WIDTH }}>
                       <colgroup>
                         <col style={{ width: ROW_HEADER_WIDTH }} />
-                        {sheetData.columns.map((column) => <col key={column} style={{ width: COL_WIDTH }} />)}
+                        {columns.map((column) => <col key={column} style={{ width: COL_WIDTH }} />)}
                       </colgroup>
                       <thead>
                         <tr>
                           <th className="sticky left-0 top-0 z-40 border border-[#d9d9d9] bg-[#f8f9fa] px-1 py-1 text-center font-mono text-[10px] font-medium text-[#5f6368]">#</th>
-                          {sheetData.columns.map((column) => (
+                          {columns.map((column) => (
                             <th key={column} className="sticky top-0 z-30 border border-[#d9d9d9] bg-[#f8f9fa] px-2 py-1 text-center font-mono text-[10px] font-medium text-[#5f6368]">{column}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {visibleRows.map((row) => (
-                          <tr key={row[0]?.row ?? "blank-row"} style={{ height: ROW_HEIGHT }}>
-                            <th className="sticky left-0 z-20 border border-[#d9d9d9] bg-[#f8f9fa] px-1 py-0 text-right font-mono text-[10px] font-normal text-[#5f6368]" style={{ height: ROW_HEIGHT }}>{row[0]?.row}</th>
-                            {row.map((cell) => {
-                              const selected = scope !== "sheet" && bounds && cell.row >= bounds.minRow && cell.row <= bounds.maxRow && cell.col >= bounds.minCol && cell.col <= bounds.maxCol;
-                              const value = displayValue(cell, showFormulas);
-                              return (
-                                <td
-                                  key={cell.ref}
-                                  onMouseDown={(event) => beginSelection(cell, event)}
-                                  onMouseEnter={() => extendSelection(cell)}
-                                  className={`cursor-cell border border-[#e2e2e2] px-2 py-0 align-middle ${selected ? "bg-[#d2e3fc] shadow-[inset_0_0_0_1px_#1a73e8]" : "bg-white"} ${cell.kind === "blank" ? "text-[#bdc1c6]" : "text-[#202124]"}`}
-                                  style={{ height: ROW_HEIGHT, lineHeight: `${ROW_HEIGHT - 2}px` }}
-                                  title={cell.formula || (cell.value === null ? "" : String(cell.value))}
-                                >
-                                  <div className="max-w-full truncate">{value || "\u00a0"}</div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
+                        {visibleRows.map((row, index) => {
+                          const rowNumber = startIndex + index + 1;
+                          const cells = row ?? Array.from({ length: totalCols }, (_, i) => ({ ref: `${columnLetter(i + 1)}${rowNumber}`, row: rowNumber, col: i + 1, value: null, formula: null, number_format: null, kind: "blank" } as ExcelCell));
+                          return (
+                            <tr key={rowNumber} style={{ height: ROW_HEIGHT }}>
+                              <th className="sticky left-0 z-20 border border-[#d9d9d9] bg-[#f8f9fa] px-1 py-0 text-right font-mono text-[10px] font-normal text-[#5f6368]" style={{ height: ROW_HEIGHT }}>{rowNumber}</th>
+                              {cells.map((cell) => {
+                                const selected = scope !== "sheet" && bounds && cell.row >= bounds.minRow && cell.row <= bounds.maxRow && cell.col >= bounds.minCol && cell.col <= bounds.maxCol;
+                                const value = displayValue(cell, showFormulas);
+                                return (
+                                  <td
+                                    key={cell.ref}
+                                    onMouseDown={(event) => beginSelection(cell, event)}
+                                    onMouseEnter={() => extendSelection(cell)}
+                                    className={`cursor-cell border border-[#e2e2e2] px-2 py-0 align-middle ${selected ? "bg-[#d2e3fc] shadow-[inset_0_0_0_1px_#1a73e8]" : "bg-white"} ${cell.kind === "blank" ? "text-[#bdc1c6]" : "text-[#202124]"}`}
+                                    style={{ height: ROW_HEIGHT, lineHeight: `${ROW_HEIGHT - 2}px` }}
+                                    title={cell.formula || (cell.value === null ? "" : String(cell.value))}
+                                  >
+                                    <div className="max-w-full truncate">{value || "\u00a0"}</div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                     <div aria-hidden="true" style={{ height: bottomSpacerHeight }} />
@@ -536,10 +650,15 @@ export default function ExcelExplainer() {
                 )}
               </div>
 
+              {sheetInfo && totalRows > 0 && (
+                <p className="text-xs text-slate-500">
+                  Đang hiển thị {startIndex + 1}–{endIndex} / {totalRows.toLocaleString("vi-VN")} dòng · {totalCols} cột đã tải. Cuộn để tải thêm. {pendingBlocks.size > 0 && "Đang tải..."}
+                </p>
+              )}
 
-              {sheetData?.truncated && (
+              {sheetInfo?.max_column && sheetInfo.max_column > 100 && (
                 <p className="border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-                  Lưới chỉ hiển thị {sheetData.row_end - sheetData.row_start + 1} dòng × {sheetData.col_end - sheetData.col_start + 1} cột đầu. Nhập vùng như <span className="font-mono">W170:W201</span> để hỏi các ô ngoài lưới; AI vẫn đọc được tối đa 400 ô mỗi lần.
+                  Sheet có {sheetInfo.max_column} cột; chỉ hiển thị 100 cột đầu. Dùng ô nhập vùng (ví dụ <span className="font-mono">DG5:DG200</span>) để chọn các cột ngoài lưới.
                 </p>
               )}
 
@@ -547,7 +666,7 @@ export default function ExcelExplainer() {
                 <p className="eyebrow">Vùng đang chọn</p>
                 <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
                   <p className="break-all font-mono text-sm font-semibold text-slate-950">{selectionTitle}</p>
-                  <p className="text-xs text-slate-500">{selectedFormulaCount} công thức trong lưới xem trước</p>
+                  <p className="text-xs text-slate-500">{selectedFormulaCount} công thức trong phần đã tải</p>
                 </div>
                 {scope === "sheet" ? (
                   <p className="mt-3 text-sm leading-6 text-slate-600">AI sẽ đọc cấu trúc sheet, các dòng mẫu đầu/cuối và tối đa 40 công thức tiêu biểu. Với sheet rất lớn, hãy chọn một vùng cụ thể để có giải thích sâu hơn.</p>
@@ -558,7 +677,7 @@ export default function ExcelExplainer() {
                     {focusCell.formula && <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all border border-sky-200 bg-sky-50 p-3 font-mono text-xs leading-5 text-sky-950">{focusCell.formula}</pre>}
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm leading-6 text-slate-600">Ô đầu của vùng nằm ngoài lưới xem trước. AI vẫn đọc vùng này khi bạn gửi câu hỏi.</p>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">Ô đang chọn chưa được tải trong bộ nhớ đệm. Cuộn tới vùng đó hoặc dùng ô nhập vùng.</p>
                 )}
               </section>
             </div>
@@ -604,7 +723,7 @@ export default function ExcelExplainer() {
                   />
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <p className="text-[10px] leading-4 text-slate-400">Ctrl/⌘ + Enter để gửi · tối đa 2.000 ký tự</p>
-                    <button type="button" onClick={() => ask()} disabled={busy || !sheetData} className="btn btn-primary shrink-0 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Gửi câu hỏi →</button>
+                    <button type="button" onClick={() => ask()} disabled={busy || !sheetInfo} className="btn btn-primary shrink-0 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Gửi câu hỏi →</button>
                   </div>
                 </div>
               </section>

@@ -2,8 +2,11 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 ARG CODEX_VERSION=0.159.3
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs npm \
+    && apt-get install -y --no-install-recommends nodejs npm curl \
     && npm install --global @openai/codex@${CODEX_VERSION} \
+    && curl -fsSL https://opencode.ai/install | bash \
+    && cp /root/.opencode/bin/opencode /usr/local/bin/opencode \
+    && chmod 755 /usr/local/bin/opencode \
     && pip install --no-cache-dir fastapi==0.141.1 uvicorn==0.34.2 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home chat \

@@ -79,7 +79,7 @@ services:
     restart: unless-stopped
     environment:
       CHAT_GATEWAY_TOKEN: ${CHAT_GATEWAY_TOKEN:-}
-      CHAT_TIMEOUT_SECONDS: ${CHAT_TIMEOUT_SECONDS:-120}
+      CHAT_TIMEOUT_SECONDS: ${CHAT_TIMEOUT_SECONDS:-300}
     volumes:
       - chat_auth:/auth:ro
       - chat_sessions:/sessions
@@ -88,7 +88,7 @@ services:
       - /tmp:size=128m,mode=1777
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 768m
+    mem_limit: 1536m
     cpus: 1.0
     pids_limit: 128
     healthcheck:

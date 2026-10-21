@@ -52,8 +52,8 @@
         reverse_proxy backend:8000 {
             transport http {
                 dial_timeout 10s
-                read_timeout 180s
-                write_timeout 180s
+                read_timeout 300s
+                write_timeout 300s
             }
         }
     }

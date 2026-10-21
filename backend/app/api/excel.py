@@ -143,8 +143,8 @@ def get_excel(
 def get_sheet(
     code: str,
     name: str = Query(min_length=1, max_length=100),
-    max_rows: int = Query(default=60, ge=1, le=120),
-    max_cols: int = Query(default=20, ge=1, le=30),
+    max_rows: int = Query(default=60, ge=1, le=200),
+    max_cols: int = Query(default=20, ge=1, le=100),
     row_start: int = Query(default=1, ge=1),
     col_start: int = Query(default=1, ge=1),
     user: User = Depends(current_user),
