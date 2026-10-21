@@ -41,6 +41,13 @@ def clean_database(monkeypatch):
                 path.unlink()
             elif path.is_dir():
                 path.rmdir()
+    excel_dir = TEST_DATA / "excel"
+    if excel_dir.exists():
+        for path in sorted(excel_dir.rglob("*"), reverse=True):
+            if path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                path.rmdir()
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         db.add_all(

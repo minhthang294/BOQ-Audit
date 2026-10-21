@@ -42,11 +42,11 @@ def validate_upload(file: UploadFile, allowed_extensions: set[str], allowed_mime
     return name, ext
 
 
-async def save_upload(file: UploadFile, destination: Path, expected_kind: str) -> int:
+async def save_upload(file: UploadFile, destination: Path, expected_kind: str, max_mb: int | None = None) -> int:
     settings = get_settings()
     require_upload_capacity()
     destination.parent.mkdir(parents=True, exist_ok=True)
-    max_bytes = settings.max_upload_mb * 1024 * 1024
+    max_bytes = (max_mb or settings.max_upload_mb) * 1024 * 1024
     size = 0
     header = b""
     try:
@@ -54,7 +54,7 @@ async def save_upload(file: UploadFile, destination: Path, expected_kind: str) -
             while chunk := await file.read(1024 * 1024):
                 size += len(chunk)
                 if size > max_bytes:
-                    raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"Tệp vượt quá {settings.max_upload_mb} MB")
+                    raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"Tệp vượt quá {max_bytes // (1024 * 1024)} MB")
                 if size == len(chunk) or size % (16 * 1024 * 1024) < len(chunk):
                     require_upload_capacity(len(chunk))
                 if len(header) < 8:

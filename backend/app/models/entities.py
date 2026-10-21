@@ -178,6 +178,19 @@ class JobNarrativeInput(Base):
     job: Mapped[Job] = relationship(back_populates="narrative_input")
 
 
+class ExcelWorkbook(Base):
+    __tablename__ = "excel_workbooks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    stored_filename: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str] = mapped_column(String(600))
+    file_size: Mapped[int] = mapped_column(Integer)
+    sheet_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class JobOutput(Base):
     __tablename__ = "job_outputs"
     id: Mapped[int] = mapped_column(primary_key=True)

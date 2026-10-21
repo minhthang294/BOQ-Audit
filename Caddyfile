@@ -20,6 +20,15 @@
     @notPdfViewer not path /api/jobs/*/input/view /api/jobs/*/outputs/*/view
     header @notPdfViewer X-Frame-Options DENY
 
+    @excelUploads {
+        method POST
+        path /api/excel/upload
+    }
+    request_body @excelUploads {
+        # Trình giải thích Excel chỉ nhận một tệp .xlsx/.xlsm tối đa 25MB.
+        max_size 30MB
+    }
+
     @uploads {
         method POST
         path /api/jobs /api/admin/jobs/*/outputs
