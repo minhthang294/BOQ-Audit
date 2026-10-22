@@ -1,0 +1,64 @@
+name: Diagnose chat gateway on GCE
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  diagnose:
+    name: Read chat gateway diagnostics
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+      GCP_DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      GCE_PROJECT_ID: ${{ vars.GCE_PROJECT_ID }}
+      GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
+      GCE_ZONE: ${{ vars.GCE_ZONE }}
+      GCE_DEPLOY_PATH: ${{ vars.GCE_DEPLOY_PATH }}
+    steps:
+      - name: Validate deployment configuration
+        run: |
+          set -euo pipefail
+          : "${GCP_PROJECT_ID:?Missing GCP_PROJECT_ID}"
+          : "${GCP_REGION:?Missing GCP_REGION}"
+          : "${GCP_WIF_PROVIDER:?Missing GCP_WIF_PROVIDER}"
+          : "${GCP_DEPLOY_SERVICE_ACCOUNT:?Missing GCP_DEPLOY_SERVICE_ACCOUNT}"
+          : "${GCE_INSTANCE:?Missing GCE_INSTANCE}"
+          : "${GCE_ZONE:?Missing GCE_ZONE}"
+          GCE_PROJECT_ID="${GCE_PROJECT_ID:-$GCP_PROJECT_ID}"
+          GCE_DEPLOY_PATH="${GCE_DEPLOY_PATH:-/home/hello291994/BOQ-Audit}"
+          [[ "$GCE_PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]
+          [[ "$GCE_INSTANCE" =~ ^[a-z]([-a-z0-9]*[a-z0-9])?$ ]]
+          [[ "$GCE_ZONE" =~ ^[a-z0-9-]+$ ]]
+          [[ "$GCE_DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ && "$GCE_DEPLOY_PATH" != / && "$GCE_DEPLOY_PATH" != *..* ]]
+          echo "GCE_PROJECT_ID=$GCE_PROJECT_ID" >> "$GITHUB_ENV"
+          echo "GCE_DEPLOY_PATH=$GCE_DEPLOY_PATH" >> "$GITHUB_ENV"
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCE_PROJECT_ID || vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ vars.GCE_PROJECT_ID || vars.GCP_PROJECT_ID }}
+
+      - name: Read sanitized VM diagnostics
+        run: |
+          set -euo pipefail
+          REMOTE_COMMAND=$(cat <<EOF
+          set -euo pipefail
+          cd "$GCE_DEPLOY_PATH"
+          sudo docker compose --profile chat ps
+          sudo docker compose --profile chat exec -T chat python -c 'import os; from pathlib import Path; print("codex_auth_file=" + ("present" if Path("/auth/auth.json").is_file() else "missing")); print("opencode_api_key=" + ("present" if bool(os.getenv("OPENCODE_API_KEY")) else "missing")); print("fallback_enabled=" + os.getenv("CHAT_FALLBACK_ENABLED", "true").lower())'
+          sudo docker compose --profile chat logs --since=24h --tail=2000 chat | grep -E 'chat_turn_incomplete|chat_turn_failed|opencode_model_failed' | tail -100 || true
+          EOF
+          )
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command="$REMOTE_COMMAND"
