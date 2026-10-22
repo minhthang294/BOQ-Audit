@@ -55,10 +55,9 @@ jobs:
           set -euo pipefail
           REMOTE_COMMAND=$(cat <<EOF
           set -euo pipefail
-          cd "$GCE_DEPLOY_PATH"
-          sudo docker compose --profile chat ps
-          sudo docker compose --profile chat exec -T chat python -c 'import os; from pathlib import Path; print("codex_auth_file=" + ("present" if Path("/auth/auth.json").is_file() else "missing")); print("opencode_api_key=" + ("present" if bool(os.getenv("OPENCODE_API_KEY")) else "missing")); print("fallback_enabled=" + os.getenv("CHAT_FALLBACK_ENABLED", "true").lower())'
-          sudo docker compose --profile chat logs --since=24h --tail=2000 chat | grep -E 'chat_turn_incomplete|chat_turn_failed|opencode_model_failed' | tail -100 || true
+          sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat ps
+          sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat exec -T chat python -c 'import os; from pathlib import Path; print("codex_auth_file=" + ("present" if Path("/auth/auth.json").is_file() else "missing")); print("opencode_api_key=" + ("present" if bool(os.getenv("OPENCODE_API_KEY")) else "missing")); print("fallback_enabled=" + os.getenv("CHAT_FALLBACK_ENABLED", "true").lower())'
+          sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat logs --since=24h --tail=2000 chat | grep -E 'chat_turn_incomplete|chat_turn_failed|opencode_model_failed' | tail -100 || true
           EOF
           )
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command="$REMOTE_COMMAND"
