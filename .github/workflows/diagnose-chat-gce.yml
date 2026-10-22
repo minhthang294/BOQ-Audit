@@ -59,14 +59,14 @@ jobs:
           sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat exec -T chat python -c 'import os; from pathlib import Path; print("codex_auth_file=" + ("present" if Path("/auth/auth.json").is_file() else "missing")); print("opencode_api_key=" + ("present" if bool(os.getenv("OPENCODE_API_KEY")) else "missing")); print("fallback_enabled=" + os.getenv("CHAT_FALLBACK_ENABLED", "true").lower())'
           sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat exec -T chat python -c 'import asyncio, json, os, shutil, subprocess, tempfile; from pathlib import Path; import sys; sys.path.insert(0, "/app"); import gateway; root=Path(tempfile.mkdtemp(prefix="codex-probe-", dir="/tmp")); home=root/"home"; workspace=root/"workspace"; home.mkdir(); workspace.mkdir(); shutil.copyfile("/auth/auth.json", home/"auth.json"); (home/"config.toml").write_text(gateway.config_text(workspace, home)); env={"PATH":os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME":str(root), "CODEX_HOME":str(home), "TMPDIR":"/tmp"}; result=None; reason="provider_error"; chars=0
           try:
-              result=subprocess.run(["codex", "exec", "--json", "--sandbox", "read-only", "--ask-for-approval", "never", "--skip-git-repo-check", "-C", str(workspace), "-"], input="Trả lời chính xác bằng một từ: OK", text=True, capture_output=True, env=env, timeout=90)
+              result=subprocess.run(["codex", "exec", "--json", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check", "-C", str(workspace), "-"], input="Trả lời chính xác bằng một từ: OK", text=True, capture_output=True, env=env, timeout=90)
               for line in result.stdout.splitlines():
                   try: event=json.loads(line)
                   except ValueError: continue
                   item=event.get("item") or {}
                   if event.get("type")=="item.completed" and item.get("type") in ("agent_message", "agentMessage"): chars += len(item.get("text", ""))
               detail=(result.stderr+result.stdout).lower()
-              reason="workspace_routing" if "workspace routing" in detail else "provider_auth" if "unauthorized" in detail or "401" in detail else "rate_limit" if "429" in detail or "rate limit" in detail else "provider_error"
+              reason="workspace_routing" if "workspace routing" in detail else "provider_auth" if "unauthorized" in detail or "401" in detail else "rate_limit" if "429" in detail or "rate limit" in detail else "cli_error" if "unexpected argument" in detail or "unrecognized option" in detail else "provider_error"
               if result.returncode==0 and chars: reason="success"
           except subprocess.TimeoutExpired: reason="timeout"
           finally: shutil.rmtree(root, ignore_errors=True)
