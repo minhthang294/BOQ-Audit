@@ -38,6 +38,7 @@ def _workbook_response(workbook: ExcelWorkbook, meta: dict) -> ExcelWorkbookResp
         code=workbook.code,
         filename=workbook.original_filename,
         file_size=workbook.file_size,
+        file_type=Path(workbook.file_path).suffix.lstrip(".").lower(),
         sheets=meta["sheets"],
         active_sheet=meta["active_sheet"],
         created_at=workbook.created_at,
@@ -95,7 +96,8 @@ async def upload_excel(
     folder = settings.excel_dir / code
     path = folder / f"input{extension}"
     try:
-        size = await save_upload(file, path, "xlsx", max_mb=settings.excel_explain_max_mb)
+        kind = "xlsx" if extension in {".xlsx", ".xlsm"} else extension[1:]
+        size = await save_upload(file, path, kind, max_mb=settings.excel_explain_max_mb)
         meta = await run_in_threadpool(excel_explain.inspect_workbook, path)
     except HTTPException:
         shutil.rmtree(folder, ignore_errors=True)
@@ -120,7 +122,7 @@ async def upload_excel(
     db.add(workbook)
     db.commit()
     db.refresh(workbook)
-    logger.info("excel_uploaded code=%s user_id=%s bytes=%s sheets=%s", code, user.id, size, len(meta["sheets"]))
+    logger.info("excel_uploaded code=%s user_id=%s bytes=%s type=%s", code, user.id, size, extension)
     return _workbook_response(workbook, meta)
 
 

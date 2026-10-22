@@ -7,6 +7,7 @@ import json
 import math
 import re
 import zipfile
+import xml.etree.ElementTree as ET
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
@@ -146,6 +147,65 @@ def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
 
+def _excel_color(color) -> str | None:
+    # shortcut: only direct RGB colors render; resolve theme/indexed palettes if a workbook depends on them.
+    if color is None or color.type != "rgb" or not color.rgb:
+        return None
+    return f"#{color.rgb[-6:]}"
+
+
+def _cell_style(cell) -> dict[str, Any]:
+    font, fill, alignment, border = cell.font, cell.fill, cell.alignment, cell.border
+    borders = {}
+    for side_name in ("left", "right", "top", "bottom"):
+        side = getattr(border, side_name)
+        if side.style:
+            borders[side_name] = {"style": side.style, "color": _excel_color(side.color)}
+    return {
+        "font_name": font.name,
+        "font_size": font.sz,
+        "bold": bool(font.b),
+        "italic": bool(font.i),
+        "underline": font.u,
+        "strike": bool(font.strike),
+        "font_color": _excel_color(font.color),
+        "fill_color": _excel_color(fill.fgColor) if fill.fill_type == "solid" else None,
+        "horizontal_alignment": alignment.horizontal,
+        "vertical_alignment": alignment.vertical,
+        "wrap_text": bool(alignment.wrap_text),
+        "shrink_to_fit": bool(alignment.shrink_to_fit),
+        "borders": borders,
+    }
+
+
+def _sheet_dimensions(workbook, worksheet, row_start: int, row_end: int, col_start: int, col_end: int):
+    """Read only the requested row/column dimension metadata from sheet XML."""
+    rows: list[dict[str, Any]] = []
+    columns: dict[int, dict[str, Any]] = {}
+    namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    with workbook._archive.open(worksheet._worksheet_path) as source:
+        for event, element in ET.iterparse(source, events=("start", "end")):
+            if event == "start" and element.tag == f"{namespace}col":
+                first, last = int(element.get("min", "1")), int(element.get("max", "1"))
+                metadata = {"width": float(element.get("width")) if element.get("width") else None,
+                            "hidden": element.get("hidden") == "1"}
+                if metadata["width"] is not None or metadata["hidden"]:
+                    for col in range(max(first, col_start), min(last, col_end) + 1):
+                        columns[col] = {"col": col, **metadata}
+            elif event == "start" and element.tag == f"{namespace}row":
+                row = int(element.get("r", "0"))
+                if row_start <= row <= row_end:
+                    height = element.get("ht")
+                    hidden = element.get("hidden") == "1"
+                    if height is not None or hidden:
+                        rows.append({"row": row, "height": float(height) if height else None, "hidden": hidden})
+                if row > row_end:
+                    break
+            elif event == "end" and element.tag == f"{namespace}sheetData":
+                break
+    return rows, list(columns.values())
+
+
 def preview_sheet(
     path: Path,
     sheet_name: str,
@@ -182,6 +242,8 @@ def preview_sheet(
         formula_map: dict[tuple[int, int], Any] = {}
         value_map: dict[tuple[int, int], Any] = {}
         formula_format: dict[tuple[int, int], str | None] = {}
+        styles: dict[int, dict[str, Any]] = {}
+        cell_styles: dict[tuple[int, int], int] = {}
         f_rows = list(ws_formula.iter_rows(min_row=row_start, max_row=row_end, min_col=col_start, max_col=col_end))
         v_rows = list(ws_value.iter_rows(min_row=row_start, max_row=row_end, min_col=col_start, max_col=col_end))
         for r_idx, (frow, vrow) in enumerate(zip(f_rows, v_rows)):
@@ -192,6 +254,10 @@ def preview_sheet(
                 raw = getattr(fcell, "value", None)
                 formula_map[key] = raw
                 formula_format[key] = getattr(fcell, "number_format", None)
+                style_id = getattr(fcell, "style_id", 0) or 0
+                cell_styles[key] = style_id
+                if style_id not in styles:
+                    styles[style_id] = _cell_style(fcell)
                 if vcell is not None:
                     vv = getattr(vcell, "value", None)
                     if vv is not None:
@@ -216,11 +282,15 @@ def preview_sheet(
                     "value": _normalise(value),
                     "formula": formula,
                     "number_format": formula_format.get(key),
+                    "style_id": cell_styles.get(key, 0),
                     "kind": kind,
                 })
             rows.append(cells)
 
         merged = []  # read-only mode does not expose mergeCells; kept for schema compat
+        row_dimensions, column_dimensions = _sheet_dimensions(
+            formulas, ws_formula, row_start, row_end, col_start, col_end
+        )
         return {
             "sheet": sheet_name,
             "max_row": max_row,
@@ -231,6 +301,9 @@ def preview_sheet(
             "col_end": col_end,
             "columns": [get_column_letter(col) for col in range(col_start, col_end + 1)],
             "rows": rows,
+            "styles": styles,
+            "row_dimensions": row_dimensions,
+            "column_dimensions": column_dimensions,
             "merged": merged,
             "truncated": max_row > row_end or max_col > col_end,
             "freeze_panes": None,
@@ -631,7 +704,13 @@ def build_context(
         values.close()
 
 
-def _gateway_reply(context: dict[str, Any], message: str, history: list[dict], user_id: int, code: str) -> str:
+def _gateway_reply(
+    context: dict[str, Any],
+    message: str,
+    history: list[dict],
+    user_id: int,
+    code: str,
+) -> str:
     settings = get_settings()
     if not settings.chat_gateway_token:
         raise ExcelAIUnavailable("AI chưa được cấu hình. Vui lòng liên hệ quản trị viên.")
@@ -692,10 +771,15 @@ def explain(
 ) -> dict[str, Any]:
     context, cells_examined, references_examined, truncated = build_context(workbook, sheet_name, scope, selection)
     address = context["selection"]["address"]
+    evidence_summary = f"Đã đọc {cells_examined} ô và {references_examined} ô tham chiếu"
     prompt = (
-        f"Giải thích thật chi tiết vùng {address} trong file {workbook.original_filename}. "
-        "Nêu rõ: công thức và ý nghĩa từng thành phần; nguồn số liệu/ô tham chiếu; cách kiểm tra chéo; "
-        "các lỗi hoặc giả định tiềm ẩn. Phân biệt công thức với giá trị cache; chỉ dùng dữ liệu trong context."
+        f"Phân tích chi tiết vùng {address} trong file {workbook.original_filename}, trả lời câu hỏi của người dùng trước. "
+        "Trình bày bằng Markdown có các mục phù hợp: kết luận, diễn giải dữ liệu/công thức theo từng bước, "
+        "nguồn tham chiếu giữa các sheet/ô, kiểm tra chéo hoặc đối chiếu số liệu, và giả định/giới hạn. "
+        "Giải thích ý nghĩa các hàm và toán tử trong công thức; phân biệt công thức với giá trị cache; "
+        "nêu đơn vị khi có căn cứ. Dùng bảng khi so sánh nhiều ô hoặc kết quả. Chỉ kết luận dựa trên context; "
+        "nói rõ nếu thiếu ô tham chiếu hoặc dữ liệu để kiểm chứng, không tự tính hay suy đoán giá trị không có. "
+        "Độ chi tiết phải đủ để người dùng lần theo cách giải thích, nhưng tránh lặp lại dữ liệu không liên quan."
     )
     if question:
         prompt += " Câu hỏi thêm của người dùng: " + question
@@ -705,4 +789,5 @@ def explain(
         "cells_examined": cells_examined,
         "references_examined": references_examined,
         "truncated": truncated,
+        "evidence_summary": evidence_summary,
     }

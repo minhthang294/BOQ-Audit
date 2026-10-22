@@ -17,6 +17,7 @@ def test_gateway_config_denies_secrets_and_disables_tools(tmp_path):
     assert filesystem[":root"] == "deny"
     assert filesystem[str(tmp_path / "home")] == "deny"
     assert filesystem[str(tmp_path / "workspace")] == "read"
+    assert config["web_search"] == "disabled"
     assert not config["permissions"]["sbtech-chat"]["network"]["enabled"]
     assert config["approval_policy"] == "never"
     for feature in ("shell_tool", "unified_exec", "multi_agent", "apps", "plugins", "view_image", "image_generation", "code_mode_host"):
@@ -99,6 +100,18 @@ def test_gateway_rejects_untrusted_fields_and_paths():
         params.update(extra)
         with pytest.raises(ValidationError):
             gateway.ReplyRequest(**params)
+
+
+def test_opencode_excel_context_includes_workbook_and_recent_turns():
+    payload = gateway.ReplyRequest(
+        session_key="a" * 64,
+        context={"task": "excel_explain", "selection": {"address": "Sheet1!A1"}},
+        history=[{"content": "Công thức ở ô A1"}],
+        message="Giải thích ô A1",
+    )
+    serialized = json.dumps(gateway._opencode_context(payload), ensure_ascii=False)
+    assert "Giải thích ô A1" in serialized and "Công thức ở ô A1" in serialized
+    assert "Sheet1!A1" in serialized
 
 
 def test_private_gateway_auth_body_limit_and_generic_errors(tmp_path, monkeypatch):
