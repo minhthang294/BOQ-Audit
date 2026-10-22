@@ -71,6 +71,29 @@ jobs:
           except subprocess.TimeoutExpired: reason="timeout"
           finally: shutil.rmtree(root, ignore_errors=True)
           print("codex_exec_probe="+reason); print("codex_exec_response_chars="+str(chars))'
+          sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat exec -T chat python - <<'PY'
+          import json, os, secrets, shutil, urllib.error, urllib.request
+          import sys
+          sys.path.insert(0, "/app")
+          import gateway
+          key = secrets.token_hex(32)
+          body = json.dumps({"session_key": key, "context": {"task": "excel_explain"}, "history": [], "message": "Trả lời chính xác bằng một từ: OK"}).encode()
+          request = urllib.request.Request("http://127.0.0.1:8010/reply", data=body, headers={"Authorization": "Bearer " + os.environ["CHAT_GATEWAY_TOKEN"], "Content-Type": "application/json"})
+          status, chars = 0, 0
+          try:
+              with urllib.request.urlopen(request, timeout=180) as response:
+                  status = response.status
+                  chars = len(response.read())
+          except urllib.error.HTTPError as error:
+              status = error.code
+              error.read()
+          except Exception:
+              pass
+          finally:
+              shutil.rmtree(gateway.SESSION_ROOT / key, ignore_errors=True)
+          print("chat_app_server_probe=" + ("success" if status == 200 and chars > 0 else "http_" + str(status) if status else "transport_error"))
+          print("chat_app_server_response_chars=" + str(chars))
+          PY
           sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat logs --since=24h --tail=2000 chat | grep -E 'chat_turn_incomplete|chat_turn_failed|opencode_model_failed' | tail -100 || true
           EOF
           )
