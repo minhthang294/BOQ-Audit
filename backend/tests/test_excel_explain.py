@@ -76,6 +76,7 @@ def test_delete_and_reupload_validation():
     assert owner.delete(f"/api/excel/{code}").status_code == 204
     assert owner.get(f"/api/excel/{code}").status_code == 404
     assert upload(owner, filename="boq.xls").status_code == 415
+    assert upload(owner, filename="law.pdf", data=b"%PDF-1.4\n%%EOF").status_code == 415
 
 
 def test_explain_rejects_oversized_selection():

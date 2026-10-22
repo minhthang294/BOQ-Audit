@@ -34,11 +34,11 @@ export default function ToolPicker() {
       <Link href="/excel" className={cardClass}>
         <div>
           <p className="eyebrow">Công cụ 03 · Beta</p>
-          <h2 className="section-title mt-3">Giải thích Excel</h2>
-          <p className="mt-4 max-w-md text-base leading-6 text-slate-600">Tải file BOQ, chọn ô, vùng hoặc sheet chưa hiểu; AI giải thích công thức, nguồn số liệu, cách kiểm tra và các lỗi tiềm ẩn.</p>
-          <p className="mt-4 border border-slate-300 bg-slate-50 p-3 text-sm leading-5 text-slate-700">AI chỉ đọc vùng được chọn và các ô tham chiếu, không sửa file gốc. Kết quả là bản nháp cần đối chiếu với bảng tính.</p>
+          <h2 className="section-title mt-3">Hỏi đáp và phân tích Excel</h2>
+          <p className="mt-4 max-w-md text-base leading-6 text-slate-600">Tải bảng tính và hỏi về công thức, số liệu, ô tham chiếu, cách đối chiếu và các điểm cần kiểm tra.</p>
+          <p className="mt-4 border border-slate-300 bg-slate-50 p-3 text-sm leading-5 text-slate-700">Chọn sheet và vùng ô để AI tập trung giải thích đúng phần bạn cần.</p>
         </div>
-        <span className={ctaClass}>Mở trình giải thích <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">→</span></span>
+        <span className={ctaClass}>Mở chat tài liệu <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">→</span></span>
       </Link>
     </section>
   </Shell>;

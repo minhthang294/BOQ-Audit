@@ -80,6 +80,7 @@ services:
     environment:
       CHAT_GATEWAY_TOKEN: ${CHAT_GATEWAY_TOKEN:-}
       CHAT_TIMEOUT_SECONDS: ${CHAT_TIMEOUT_SECONDS:-300}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
     volumes:
       - chat_auth:/auth:ro
       - chat_sessions:/sessions

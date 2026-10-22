@@ -234,6 +234,7 @@ class ExcelWorkbookResponse(BaseModel):
     code: str
     filename: str
     file_size: int
+    file_type: str = "xlsx"
     sheets: list[ExcelSheetInfo]
     active_sheet: str
     created_at: datetime
@@ -246,8 +247,37 @@ class ExcelCellResponse(BaseModel):
     value: Any | None = None
     formula: str | None = None
     number_format: str | None = None
+    style_id: int = 0
     kind: str = "blank"
     comment: str | None = None
+
+
+class ExcelCellStyleResponse(BaseModel):
+    font_name: str | None = None
+    font_size: float | None = None
+    bold: bool = False
+    italic: bool = False
+    underline: str | None = None
+    strike: bool = False
+    font_color: str | None = None
+    fill_color: str | None = None
+    horizontal_alignment: str | None = None
+    vertical_alignment: str | None = None
+    wrap_text: bool = False
+    shrink_to_fit: bool = False
+    borders: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+
+
+class ExcelRowDimensionResponse(BaseModel):
+    row: int
+    height: float | None = None
+    hidden: bool = False
+
+
+class ExcelColumnDimensionResponse(BaseModel):
+    col: int
+    width: float | None = None
+    hidden: bool = False
 
 
 class ExcelSheetResponse(BaseModel):
@@ -260,6 +290,9 @@ class ExcelSheetResponse(BaseModel):
     col_end: int
     columns: list[str]
     rows: list[list[ExcelCellResponse]]
+    styles: dict[int, ExcelCellStyleResponse] = Field(default_factory=dict)
+    row_dimensions: list[ExcelRowDimensionResponse] = Field(default_factory=list)
+    column_dimensions: list[ExcelColumnDimensionResponse] = Field(default_factory=list)
     merged: list[str] = Field(default_factory=list)
     truncated: bool = False
     freeze_panes: str | None = None
@@ -292,6 +325,7 @@ class ExcelExplainResponse(BaseModel):
     cells_examined: int
     references_examined: int
     truncated: bool
+    evidence_summary: str = ""
 
 
 JobResponse.model_rebuild()
