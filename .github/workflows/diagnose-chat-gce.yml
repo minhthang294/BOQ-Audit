@@ -2,6 +2,11 @@ name: Diagnose chat gateway on GCE
 
 on:
   workflow_dispatch:
+    inputs:
+      sync_auth:
+        description: Copy the VM user's Codex login into the backend and chat volumes before probing.
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -21,6 +26,7 @@ jobs:
       GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
       GCE_ZONE: ${{ vars.GCE_ZONE }}
       GCE_DEPLOY_PATH: ${{ vars.GCE_DEPLOY_PATH }}
+      SYNC_AUTH: ${{ inputs.sync_auth }}
     steps:
       - name: Validate deployment configuration
         run: |
@@ -56,6 +62,11 @@ jobs:
           REMOTE_COMMAND=$(cat <<EOF
           set -euo pipefail
           sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat ps
+          if [[ "$SYNC_AUTH" == true ]]; then
+            sudo test -f /home/hello291994_gmail_com/.codex/auth.json
+            sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" cp /home/hello291994_gmail_com/.codex/auth.json backend:/root/.codex/auth.json
+            sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat-setup run --rm chat-auth-init
+          fi
           sudo python3 -c 'from pathlib import Path; import hashlib; p=Path("/home/hello291994_gmail_com/.codex/auth.json"); print("vm_user_auth=" + ("present" if p.is_file() else "missing")); print("vm_user_auth_mtime=" + (str(int(p.stat().st_mtime)) if p.is_file() else "none")); print("vm_user_auth_digest=" + (hashlib.sha256(p.read_bytes()).hexdigest()[:12] if p.is_file() else "none"))'
           sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" exec -T backend python -c 'from pathlib import Path; import hashlib; p=Path("/root/.codex/auth.json"); print("backend_auth_mtime=" + (str(int(p.stat().st_mtime)) if p.is_file() else "none")); print("backend_auth_digest=" + (hashlib.sha256(p.read_bytes()).hexdigest()[:12] if p.is_file() else "none"))'
           sudo docker compose --project-directory "$GCE_DEPLOY_PATH" -f "$GCE_DEPLOY_PATH/docker-compose.yml" --profile chat exec -T chat python -c 'from pathlib import Path; import hashlib; p=Path("/auth/auth.json"); print("chat_auth_mtime=" + (str(int(p.stat().st_mtime)) if p.is_file() else "none")); print("chat_auth_digest=" + (hashlib.sha256(p.read_bytes()).hexdigest()[:12] if p.is_file() else "none"))'
