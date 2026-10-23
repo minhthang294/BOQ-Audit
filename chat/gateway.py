@@ -40,6 +40,7 @@ CHAT_FALLBACK_MODELS = [
 ]
 CHAT_FALLBACK_ENABLED = os.environ.get("CHAT_FALLBACK_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
 OPENCODE_API_KEY = os.environ.get("OPENCODE_API_KEY", "").strip()
+EXCEL_MODEL = "gpt-6-luna"
 
 
 class ReplyRequest(BaseModel):
@@ -252,7 +253,10 @@ async def conversation(payload: ReplyRequest) -> dict:
             if not payload.thread_id:
                 context["recent_conversation"] = payload.history
             text = json.dumps(context, ensure_ascii=False)
-            turn = await rpc(process, 3, "turn/start", {"threadId": thread_id, "permissions": "sbtech-chat", "approvalPolicy": "never", "input": [{"type": "text", "text": text}]})
+            turn_params = {"threadId": thread_id, "permissions": "sbtech-chat", "approvalPolicy": "never", "input": [{"type": "text", "text": text}]}
+            if payload.context.get("task") == "excel_explain":
+                turn_params["model"] = EXCEL_MODEL
+            turn = await rpc(process, 3, "turn/start", turn_params)
             turn_id = turn["turn"]["id"]
             final = ""
             completed_items = set()
@@ -316,7 +320,7 @@ async def conversation(payload: ReplyRequest) -> dict:
         # Propagate isolation/security errors unchanged; do not mask them.
         if any(token in message.lower() for token in ("tool", "belong", "isolation", "unauthorized")):
             raise
-        if CHAT_FALLBACK_ENABLED:
+        if CHAT_FALLBACK_ENABLED and payload.context.get("task") != "excel_explain":
             try:
                 text = await _opencode_fallback(payload, session_dir)
                 return {"thread_id": None, "text": text}

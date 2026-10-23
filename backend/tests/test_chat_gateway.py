@@ -114,6 +114,39 @@ def test_opencode_excel_context_includes_workbook_and_recent_turns():
     assert "Sheet1!A1" in serialized
 
 
+def test_excel_uses_luna_without_opencode_fallback(tmp_path, monkeypatch):
+    auth = tmp_path / "auth.json"
+    auth.write_text("{}")
+    monkeypatch.setattr(gateway, "AUTH_FILE", auth)
+    monkeypatch.setattr(gateway, "SESSION_ROOT", tmp_path / "sessions")
+    original_rpc = gateway.rpc
+    turn_models = []
+    fallback_calls = []
+
+    async def fail_turn(process, request_id, method, params):
+        if method == "turn/start":
+            turn_models.append(params.get("model"))
+            raise RuntimeError("provider unavailable")
+        return await original_rpc(process, request_id, method, params)
+
+    async def forbidden_fallback(*_args):
+        fallback_calls.append(True)
+        raise AssertionError("Excel must not use OpenCode fallback")
+
+    monkeypatch.setattr(gateway, "rpc", fail_turn)
+    monkeypatch.setattr(gateway, "_opencode_fallback", forbidden_fallback)
+    async def spawn(*_args, **_kwargs):
+        return FakeProcess()
+    monkeypatch.setattr(gateway.asyncio, "create_subprocess_exec", spawn)
+
+    request = gateway.ReplyRequest(session_key="a" * 64, context={"task": "excel_explain"}, message="Giải thích ô A1")
+    with pytest.raises(RuntimeError, match="AI temporarily unavailable"):
+        asyncio.run(gateway.conversation(request))
+
+    assert turn_models == ["gpt-6-luna"]
+    assert fallback_calls == []
+
+
 def test_private_gateway_auth_body_limit_and_generic_errors(tmp_path, monkeypatch):
     import httpx2 as httpx
     token = "gateway-test-token-at-least-32-characters"
