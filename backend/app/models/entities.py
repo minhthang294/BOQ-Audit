@@ -191,6 +191,13 @@ class ExcelWorkbook(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
+class ExcelConversation(Base):
+    __tablename__ = "excel_conversations"
+    workbook_id: Mapped[int] = mapped_column(ForeignKey("excel_workbooks.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    thread_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
 class JobOutput(Base):
     __tablename__ = "job_outputs"
     id: Mapped[int] = mapped_column(primary_key=True)

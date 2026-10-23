@@ -92,6 +92,27 @@ def test_explain_rejects_oversized_selection():
     assert "vượt quá giới hạn" in response.json()["detail"]
 
 
+def test_explain_reuses_workbook_thread(monkeypatch):
+    owner = ASGIClient()
+    assert login(owner, "owner", "owner-pass-123").status_code == 200
+    code = upload(owner).json()["code"]
+    seen = []
+
+    def answer(_workbook, _user_id, _sheet, _scope, _selection, _question, _history, thread_id):
+        seen.append(thread_id)
+        return {"explanation": "Ô đã chọn có giá trị 45.", "thread_id": "excel-thread", "cells_examined": 1,
+                "references_examined": 0, "truncated": False, "evidence_summary": "Đã đọc 1 ô"}
+
+    monkeypatch.setattr(excel_explain, "explain", answer)
+    request = {"sheet": "BOQ chi tiet", "scope": "cell", "selection": "A170", "question": "Giá trị ô này?", "history": []}
+    first = owner.post(f"/api/excel/{code}/explain", json=request)
+    second = owner.post(f"/api/excel/{code}/explain", json=request)
+
+    assert first.status_code == second.status_code == 200
+    assert seen == [None, "excel-thread"]
+    assert "thread_id" not in second.json()
+
+
 def test_build_context_includes_formula_and_references(tmp_path):
     path = get_settings().excel_dir / "XL-UNIT" / "input.xlsx"
     path.parent.mkdir(parents=True, exist_ok=True)

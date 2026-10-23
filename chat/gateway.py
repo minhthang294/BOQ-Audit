@@ -119,8 +119,10 @@ async def rpc(process, request_id: int, method: str, params: dict) -> dict:
 
 def _opencode_context(payload: ReplyRequest) -> dict:
     context = {"question": payload.message}
+    if payload.context:
+        context["authorized_project_context"] = payload.context
     if not payload.thread_id:
-        context.update(authorized_project_context=payload.context, recent_conversation=payload.history)
+        context["recent_conversation"] = payload.history
     return context
 
 
@@ -245,8 +247,10 @@ async def conversation(payload: ReplyRequest) -> dict:
                 raise RuntimeError("Conversation does not belong to this session")
             marker.write_text(json.dumps(thread_id))
             context = {"question": payload.message}
+            if payload.context:
+                context["authorized_project_context"] = payload.context
             if not payload.thread_id:
-                context.update(authorized_project_context=payload.context, recent_conversation=payload.history)
+                context["recent_conversation"] = payload.history
             text = json.dumps(context, ensure_ascii=False)
             turn = await rpc(process, 3, "turn/start", {"threadId": thread_id, "permissions": "sbtech-chat", "approvalPolicy": "never", "input": [{"type": "text", "text": text}]})
             turn_id = turn["turn"]["id"]
