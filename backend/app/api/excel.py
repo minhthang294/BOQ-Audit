@@ -13,7 +13,7 @@ from app.api.deps import current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.rate_limit import PersistentRateLimiter
-from app.models.entities import ExcelWorkbook, User
+from app.models.entities import ExcelConversation, ExcelWorkbook, User
 from app.schemas.api import (
     ExcelExplainRequest,
     ExcelExplainResponse,
@@ -174,6 +174,11 @@ async def explain_excel(
     db: Session = Depends(get_db),
 ):
     workbook = _owned_workbook(db, code, user)
+    conversation = db.get(ExcelConversation, workbook.id)
+    if conversation is None:
+        conversation = ExcelConversation(workbook_id=workbook.id, user_id=user.id)
+    elif conversation.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hội thoại Excel.")
     if not explain_limiter.consume(db, str(user.id)):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
@@ -190,6 +195,7 @@ async def explain_excel(
             payload.selection,
             payload.question,
             [turn.model_dump() for turn in payload.history],
+            conversation.thread_id,
         )
     except excel_explain.ExcelAIBusy as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -200,6 +206,9 @@ async def explain_excel(
     except Exception:
         logger.exception("excel_explain_failed code=%s user_id=%s", code, user.id)
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Không tạo được giải thích. Vui lòng thử lại.") from None
+    conversation.thread_id = result.pop("thread_id")
+    db.add(conversation)
+    db.commit()
     return ExcelExplainResponse(**result)
 
 

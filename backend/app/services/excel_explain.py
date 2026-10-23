@@ -710,7 +710,8 @@ def _gateway_reply(
     history: list[dict],
     user_id: int,
     code: str,
-) -> str:
+    thread_id: str | None,
+) -> dict[str, str]:
     settings = get_settings()
     if not settings.chat_gateway_token:
         raise ExcelAIUnavailable("AI chưa được cấu hình. Vui lòng liên hệ quản trị viên.")
@@ -721,7 +722,7 @@ def _gateway_reply(
     ).hexdigest()
     payload = {
         "session_key": session_key,
-        "thread_id": None,
+        "thread_id": thread_id,
         "context": context,
         "history": history[-6:],
         "message": message[:2000],
@@ -757,7 +758,10 @@ def _gateway_reply(
     text = reply.get("text")
     if not isinstance(text, str) or not text.strip() or len(text) > 12000:
         raise ExcelAIUnavailable("AI trả về câu trả lời không hợp lệ.")
-    return text
+    returned_thread_id = reply.get("thread_id")
+    if not isinstance(returned_thread_id, str) or len(returned_thread_id) > 100:
+        raise ExcelAIUnavailable("AI trả về hội thoại không hợp lệ.")
+    return {"text": text, "thread_id": returned_thread_id}
 
 
 def explain(
@@ -768,6 +772,7 @@ def explain(
     selection: str,
     question: str,
     history: list[dict],
+    thread_id: str | None = None,
 ) -> dict[str, Any]:
     context, cells_examined, references_examined, truncated = build_context(workbook, sheet_name, scope, selection)
     address = context["selection"]["address"]
@@ -783,9 +788,10 @@ def explain(
     )
     if question:
         prompt += " Câu hỏi thêm của người dùng: " + question
-    explanation = _gateway_reply(context, prompt, history, user_id, workbook.code)
+    reply = _gateway_reply(context, prompt, history, user_id, workbook.code, thread_id)
     return {
-        "explanation": explanation,
+        "explanation": reply["text"],
+        "thread_id": reply["thread_id"],
         "cells_examined": cells_examined,
         "references_examined": references_examined,
         "truncated": truncated,
