@@ -26,7 +26,7 @@ SESSION_ROOT = Path(os.environ.get("CHAT_SESSION_DIR", "/sessions"))
 AUTH_FILE = Path(os.environ.get("CHAT_AUTH_FILE", "/auth/auth.json"))
 TIMEOUT = int(os.environ.get("CHAT_TIMEOUT_SECONDS", "120"))
 TOKEN = os.environ.get("CHAT_GATEWAY_TOKEN", "")
-MAX_BYTES = 100000
+MAX_BYTES = 2_000_000
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 logger = logging.getLogger("sbtech-chat")
 turn_lock = asyncio.Lock()
