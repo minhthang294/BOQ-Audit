@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "base": "complete_metadata.json",
+  "description": "Negative mutations applied to a deep copy of complete_metadata.json. The harness materializes the 12 JSON stems, sets checkpoint.json.stage to the requested stage, applies mutations, then runs the pinned validator in a fresh temp directory.",
+  "mutation_ops": {
+    "delete_array_item": "Delete one array item from files[file] where item[id_field] == id.",
+    "delete_file": "Remove files[file] from the materialized work directory.",
+    "set": "Set files[file] at the JSON path given by path[] to value.",
+    "write_json": "Write value as JSON to files[file] after the base fixture is materialized."
+  },
+  "cases": [
+    {
+      "id": "missing_page",
+      "description": "One inventoried page is absent from page_ledger.json.",
+      "stage": "release",
+      "mutations": [
+        {
+          "op": "delete_array_item",
+          "file": "page_ledger.json",
+          "id_field": "page_id",
+          "id": "DOC-001-P00001"
+        }
+      ],
+      "expected": {
+        "exit_code": 2,
+        "candidate_release_status": "BLOCKED",
+        "blocking_contains": "Page ledger does not exactly cover every inventoried document page"
+      }
+    },
+    {
+      "id": "fake_gate_missing_ledger",
+      "description": "A model-written coverage_result.json claims PASS while calculation_ledger.json is missing.",
+      "stage": "release",
+      "mutations": [
+        {
+          "op": "write_json",
+          "file": "coverage_result.json",
+          "value": {
+            "protocol_version": "v6.4",
+            "stage": "release",
+            "gate": "METADATA_ONLY",
+            "candidate_release_status": "READY_FOR_ENGINEER_REVIEW",
+            "blocking_checks": [],
+            "automatic_publication_allowed": false
+          }
+        },
+        {
+          "op": "delete_file",
+          "file": "calculation_ledger.json"
+        }
+      ],
+      "expected": {
+        "exit_code": 2,
+        "candidate_release_status": "BLOCKED",
+        "blocking_contains": "Missing or malformed calculation_ledger.json"
+      }
+    },
+    {
+      "id": "pending_recheck",
+      "description": "A correction leaves a pending recheck in checkpoint.json.",
+      "stage": "pass1",
+      "mutations": [
+        {
+          "op": "set",
+          "file": "checkpoint.json",
+          "path": [
+            "pending_rechecks"
+          ],
+          "value": [
+            {
+              "reason": "Synthetic dimension correction",
+              "target_ids": [
+                "ROW-1"
+              ],
+              "source_anchors": [
+                "fixture.pdf p1"
+              ]
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "exit_code": 2,
+        "candidate_release_status": "BLOCKED",
+        "blocking_contains": "Pending rechecks missing or not cleared"
+      }
+    },
+    {
+      "id": "missing_pass2",
+      "description": "pass2_review.json is absent at the pass2 gate.",
+      "stage": "pass2",
+      "mutations": [
+        {
+          "op": "delete_file",
+          "file": "pass2_review.json"
+        }
+      ],
+      "expected": {
+        "exit_code": 2,
+        "candidate_release_status": "BLOCKED",
+        "blocking_contains_any": [
+          "Missing or malformed pass2_review.json",
+          "Independent pass 2 ledger is empty"
+        ]
+      }
+    }
+  ]
+}
