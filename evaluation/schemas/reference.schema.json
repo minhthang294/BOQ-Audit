@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boq-audit.local/schemas/q10/reference.schema.json",
+  "title": "Q10 reference package v1",
+  "description": "Versioned, human-adjudicated reference package. Synthetic fixtures only in this repository; no customer or real project data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "corpus_id",
+    "package_id",
+    "label_version",
+    "case_type",
+    "data_origin",
+    "discipline",
+    "label_reviewer_id",
+    "source",
+    "source_verification",
+    "scope",
+    "exclusions",
+    "limitations",
+    "references"
+  ],
+  "properties": {
+    "schema_version": { "const": "q10.reference/1" },
+    "corpus_id": { "$ref": "#/$defs/identifier" },
+    "package_id": { "$ref": "#/$defs/identifier" },
+    "label_version": { "type": "integer", "minimum": 1 },
+    "case_type": {
+      "enum": ["CONFIRMED_ERROR", "SCOPED_CLEAN", "AMBIGUOUS", "SYNTHETIC_SEED"]
+    },
+    "data_origin": {
+      "enum": ["SYNTHETIC", "ANONYMIZED_APPROVED", "REAL_APPROVED"]
+    },
+    "discipline": { "type": "string", "minLength": 1 },
+    "label_reviewer_id": { "$ref": "#/$defs/identifier" },
+    "source": { "$ref": "#/$defs/source" },
+    "source_verification": { "$ref": "#/$defs/source_verification" },
+    "scope": { "$ref": "#/$defs/scope" },
+    "exclusions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "supersedes": {
+      "type": ["string", "null"],
+      "pattern": "^PKG-"
+    },
+    "references": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reference" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "case_type": { "const": "SCOPED_CLEAN" } },
+        "required": ["case_type"]
+      },
+      "then": {
+        "properties": {
+          "references": { "maxItems": 0 },
+          "source_verification": {
+            "properties": { "status": { "const": "MATCH" } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "case_type": { "enum": ["CONFIRMED_ERROR", "SYNTHETIC_SEED"] } },
+        "required": ["case_type"]
+      },
+      "then": { "properties": { "references": { "minItems": 1 } } }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 3,
+      "pattern": "^[A-Z][A-Z0-9_-]{2,63}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["documents"],
+      "properties": {
+        "documents": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/document" }
+        }
+      }
+    },
+    "source_verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checked_by", "checked_at", "note"],
+      "properties": {
+        "status": { "enum": ["MATCH", "MISMATCH", "UNVERIFIED"] },
+        "checked_by": { "$ref": "#/$defs/identifier" },
+        "checked_at": { "type": "string", "format": "date-time" },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc_id", "filename", "revision", "sha256", "document_kind"],
+      "properties": {
+        "doc_id": { "$ref": "#/$defs/identifier" },
+        "filename": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "document_kind": {
+          "enum": ["DRAWING", "BOQ", "ESTIMATE", "NARRATIVE", "SPECIFICATION", "OTHER"]
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "page_ids", "object_ids", "required_checks"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "page_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" },
+          "uniqueItems": true
+        },
+        "object_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" },
+          "uniqueItems": true
+        },
+        "required_checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "root_ref_id",
+        "object_id",
+        "classification",
+        "severity",
+        "location",
+        "evidence",
+        "numerical_basis",
+        "adjudication_status",
+        "reviewer_id",
+        "version",
+        "supersedes"
+      ],
+      "properties": {
+        "ref_id": { "$ref": "#/$defs/identifier" },
+        "root_ref_id": { "$ref": "#/$defs/identifier" },
+        "object_id": { "$ref": "#/$defs/identifier" },
+        "classification": {
+          "enum": [
+            "QUANTITY",
+            "SPECIFICATION",
+            "OMISSION",
+            "DUPLICATION",
+            "UNIT",
+            "SEQUENCE",
+            "RECONCILIATION",
+            "GEOMETRY",
+            "DOCUMENT_CONTROL",
+            "OTHER"
+          ]
+        },
+        "severity": { "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NOTE"] },
+        "location": { "$ref": "#/$defs/location" },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "numerical_basis": { "$ref": "#/$defs/numerical_basis" },
+        "adjudication_status": {
+          "enum": ["ADJUDICATED", "UNRESOLVED", "EXCLUDED"]
+        },
+        "reviewer_id": { "$ref": "#/$defs/identifier" },
+        "version": { "type": "integer", "minimum": 1 },
+        "supersedes": {
+          "type": ["string", "null"],
+          "pattern": "^REF-"
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doc_id",
+        "revision",
+        "pdf_page",
+        "printed_sheet",
+        "boq_sheet",
+        "boq_row",
+        "boq_cell"
+      ],
+      "properties": {
+        "doc_id": { "$ref": "#/$defs/identifier" },
+        "revision": { "type": "string", "minLength": 1 },
+        "pdf_page": { "type": ["integer", "null"], "minimum": 1 },
+        "printed_sheet": { "type": ["string", "null"] },
+        "boq_sheet": { "type": ["string", "null"] },
+        "boq_row": { "type": ["integer", "null"], "minimum": 1 },
+        "boq_cell": { "type": ["string", "null"] }
+      },
+      "anyOf": [
+        {
+          "properties": { "pdf_page": { "type": "integer" } },
+          "required": ["pdf_page"]
+        },
+        {
+          "properties": {
+            "boq_sheet": { "type": "string" },
+            "boq_row": { "type": "integer" }
+          },
+          "required": ["boq_sheet", "boq_row"]
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "kind", "anchor", "description"],
+      "properties": {
+        "evidence_id": { "$ref": "#/$defs/identifier" },
+        "kind": {
+          "enum": ["DRAWING", "BOQ", "ESTIMATE", "CALCULATION", "DOCUMENT_CONTROL", "OTHER"]
+        },
+        "anchor": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "sha256": {
+          "anyOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "numerical_basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "formula",
+        "inputs",
+        "units",
+        "assumptions",
+        "tolerance",
+        "expected",
+        "actual",
+        "delta"
+      ],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "formula": { "type": ["string", "null"] },
+        "inputs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/input" }
+        },
+        "units": { "type": "string", "minLength": 1 },
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "tolerance": { "$ref": "#/$defs/tolerance" },
+        "expected": { "type": ["number", "null"] },
+        "actual": { "type": ["number", "null"] },
+        "delta": { "type": ["number", "null"] }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "unit", "source_ref"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": ["number", "string", "boolean", "null"] },
+        "unit": { "type": ["string", "null"] },
+        "source_ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "tolerance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value", "note"],
+      "properties": {
+        "kind": {
+          "enum": ["EXACT", "ABSOLUTE", "RELATIVE", "APPROVED_CASE_SPECIFIC"]
+        },
+        "value": { "type": ["number", "null"], "minimum": 0 },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

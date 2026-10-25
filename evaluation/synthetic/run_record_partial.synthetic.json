@@ -1,0 +1,65 @@
+{
+  "schema_version": "q10.run_record/1",
+  "run_record_id": "RUN-SYN-002",
+  "attempt_id": "ATT-SYN-002",
+  "corpus_id": "CORPUS-SYN-001",
+  "package_id": "JOB-SYN-001",
+  "reference_package_id": "PKG-SYN-REF-001",
+  "reference_version": 1,
+  "source_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "input_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "output_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "data_origin": "SYNTHETIC",
+  "attempt_status": "PARTIAL",
+  "created_at": "2026-10-25T09:40:00Z",
+  "app": {
+    "app_revision": "8cdacddc3ec8187d29d20d2bc1792197abe55bdd",
+    "deployment_revision": "SYNTHETIC-DEPLOY-001"
+  },
+  "runtime": {
+    "model_id": "synthetic-model",
+    "provider": "synthetic-provider",
+    "cli_version": "synthetic-cli-0",
+    "skill_bundle_id": "SKILL-SYN-001",
+    "skill_version": "1.0.0",
+    "skill_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "prompt_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "config_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "sources": [
+    {
+      "doc_id": "DOC-SYN-DWG-001",
+      "revision": "R01",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "doc_id": "DOC-SYN-BOQ-001",
+      "revision": "R01",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "ART-SYN-003",
+      "kind": "AUDIT_JSON",
+      "filename": "synthetic-partial-audit.json",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size_bytes": 512
+    }
+  ],
+  "metrics": {
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "unresolved": 1,
+    "unscored": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "precision_denominator": 1,
+    "recall_denominator": 1,
+    "denominator_notes": [
+      "Partial attempt retained and not eligible for a pilot pass.",
+      "Unresolved and unscored items are excluded from denominators."
+    ]
+  }
+}

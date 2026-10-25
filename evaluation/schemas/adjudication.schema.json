@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boq-audit.local/schemas/q10/adjudication.schema.json",
+  "title": "Q10 finding adjudication v1",
+  "description": "Human adjudication of one evaluation attempt. Each finding maps to at most one reference via a single ref_id. Missed references are recorded separately as FN. Synthetic fixtures only in this repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "adjudication_id",
+    "corpus_id",
+    "package_id",
+    "reference_package_id",
+    "reference_version",
+    "run_record_id",
+    "attempt_id",
+    "data_origin",
+    "reviewer_id",
+    "reviewed_at",
+    "findings",
+    "missed_references"
+  ],
+  "properties": {
+    "schema_version": { "const": "q10.adjudication/1" },
+    "adjudication_id": { "$ref": "#/$defs/identifier" },
+    "corpus_id": { "$ref": "#/$defs/identifier" },
+    "package_id": { "$ref": "#/$defs/identifier" },
+    "reference_package_id": { "$ref": "#/$defs/identifier" },
+    "reference_version": { "type": "integer", "minimum": 1 },
+    "run_record_id": { "$ref": "#/$defs/identifier" },
+    "attempt_id": { "$ref": "#/$defs/identifier" },
+    "data_origin": {
+      "enum": ["SYNTHETIC", "ANONYMIZED_APPROVED", "REAL_APPROVED"]
+    },
+    "reviewer_id": { "$ref": "#/$defs/identifier" },
+    "reviewed_at": { "type": "string", "format": "date-time" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "missed_references": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/missed_reference" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 3,
+      "pattern": "^[A-Z][A-Z0-9_-]{2,63}$"
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "root_finding_id",
+        "duplicate_of",
+        "ref_id",
+        "disposition",
+        "rationale",
+        "evidence_checked",
+        "counts_as_unique"
+      ],
+      "properties": {
+        "finding_id": { "$ref": "#/$defs/identifier" },
+        "root_finding_id": { "$ref": "#/$defs/identifier" },
+        "duplicate_of": {
+          "type": ["string", "null"],
+          "pattern": "^FIND-"
+        },
+        "ref_id": {
+          "type": ["string", "null"],
+          "pattern": "^REF-"
+        },
+        "disposition": {
+          "enum": ["TP", "FP", "UNRESOLVED", "OUT_OF_SCOPE", "DUPLICATE"]
+        },
+        "rationale": { "type": "string", "minLength": 1 },
+        "evidence_checked": { "type": "boolean" },
+        "counts_as_unique": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "duplicate_of": { "type": "string" } },
+            "required": ["duplicate_of"]
+          },
+          "then": {
+            "properties": {
+              "disposition": { "const": "DUPLICATE" },
+              "counts_as_unique": { "const": false }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "disposition": { "const": "DUPLICATE" } },
+            "required": ["disposition"]
+          },
+          "then": {
+            "properties": {
+              "duplicate_of": { "type": "string" },
+              "counts_as_unique": { "const": false }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "disposition": { "const": "TP" } },
+            "required": ["disposition"]
+          },
+          "then": {
+            "properties": {
+              "ref_id": { "type": "string" },
+              "duplicate_of": { "type": "null" },
+              "counts_as_unique": { "const": true }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "disposition": { "const": "FP" } },
+            "required": ["disposition"]
+          },
+          "then": {
+            "properties": {
+              "ref_id": { "type": "null" },
+              "duplicate_of": { "type": "null" },
+              "counts_as_unique": { "const": true }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "disposition": { "enum": ["UNRESOLVED", "OUT_OF_SCOPE"] }
+            },
+            "required": ["disposition"]
+          },
+          "then": {
+            "properties": { "counts_as_unique": { "const": false } }
+          }
+        }
+      ]
+    },
+    "missed_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "disposition",
+        "rationale",
+        "source_checked"
+      ],
+      "properties": {
+        "ref_id": {
+          "type": "string",
+          "pattern": "^REF-"
+        },
+        "disposition": { "const": "FN" },
+        "rationale": { "type": "string", "minLength": 1 },
+        "source_checked": { "type": "boolean" }
+      }
+    }
+  }
+}

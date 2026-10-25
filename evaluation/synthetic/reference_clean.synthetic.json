@@ -1,0 +1,50 @@
+{
+  "schema_version": "q10.reference/1",
+  "corpus_id": "CORPUS-SYN-001",
+  "package_id": "PKG-SYN-REF-002",
+  "label_version": 1,
+  "case_type": "SCOPED_CLEAN",
+  "data_origin": "SYNTHETIC",
+  "discipline": "Synthetic clean-scope control",
+  "label_reviewer_id": "REVIEWER-SYN-001",
+  "source": {
+    "documents": [
+      {
+        "doc_id": "DOC-SYN-DWG-002",
+        "filename": "synthetic-clean-drawing-r01.pdf",
+        "revision": "R01",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "document_kind": "DRAWING"
+      },
+      {
+        "doc_id": "DOC-SYN-BOQ-002",
+        "filename": "synthetic-clean-boq-r01.xlsx",
+        "revision": "R01",
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "document_kind": "BOQ"
+      }
+    ]
+  },
+  "source_verification": {
+    "status": "MATCH",
+    "checked_by": "REVIEWER-SYN-001",
+    "checked_at": "2026-10-24T09:05:00Z",
+    "note": "Synthetic clean case; a source revision mismatch would invalidate clean status."
+  },
+  "scope": {
+    "description": "Synthetic scoped-clean control; no confirmed errors are expected within the stated scope.",
+    "page_ids": ["PAGE-SYN-010"],
+    "object_ids": ["OBJ-SYN-CLEAN-01"],
+    "required_checks": ["DIMENSIONAL_RECALC", "BOQ_ROW_PARITY"]
+  },
+  "exclusions": [
+    "No structural design verification.",
+    "No real project or customer data."
+  ],
+  "limitations": [
+    "Clean status applies only to the named synthetic page and object.",
+    "Absence of a confirmed error is not evidence of overall correctness."
+  ],
+  "supersedes": null,
+  "references": []
+}
