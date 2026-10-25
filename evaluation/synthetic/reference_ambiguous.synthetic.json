@@ -1,0 +1,88 @@
+{
+  "schema_version": "q10.reference/1",
+  "corpus_id": "CORPUS-SYN-001",
+  "package_id": "PKG-SYN-REF-003",
+  "label_version": 1,
+  "case_type": "AMBIGUOUS",
+  "data_origin": "SYNTHETIC",
+  "discipline": "Synthetic ambiguous geometry",
+  "label_reviewer_id": "REVIEWER-SYN-001",
+  "source": {
+    "documents": [
+      {
+        "doc_id": "DOC-SYN-DWG-003",
+        "filename": "synthetic-ambiguous-drawing-r01.pdf",
+        "revision": "R01",
+        "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "document_kind": "DRAWING"
+      }
+    ]
+  },
+  "source_verification": {
+    "status": "MATCH",
+    "checked_by": "REVIEWER-SYN-001",
+    "checked_at": "2026-10-24T09:10:00Z",
+    "note": "Synthetic source matches; the ambiguity is in the dimension, not the revision."
+  },
+  "scope": {
+    "description": "Synthetic ambiguous geometry; no score may be inferred without a reviewer decision.",
+    "page_ids": ["PAGE-SYN-003"],
+    "object_ids": ["OBJ-SYN-AMB-01"],
+    "required_checks": ["GEOMETRY_SOURCE_CHECK"]
+  },
+  "exclusions": [
+    "No assumption may be introduced to make the geometry calculable.",
+    "No real project or customer data."
+  ],
+  "limitations": [
+    "The source dimension is intentionally ambiguous.",
+    "This package must not be treated as clean or as a confirmed numerical error."
+  ],
+  "supersedes": null,
+  "references": [
+    {
+      "ref_id": "REF-SYN-004",
+      "root_ref_id": "REF-SYN-004",
+      "object_id": "OBJ-SYN-AMB-01",
+      "classification": "GEOMETRY",
+      "severity": "MEDIUM",
+      "location": {
+        "doc_id": "DOC-SYN-DWG-003",
+        "revision": "R01",
+        "pdf_page": 3,
+        "printed_sheet": "S-03",
+        "boq_sheet": null,
+        "boq_row": null,
+        "boq_cell": null
+      },
+      "evidence": [
+        {
+          "evidence_id": "EV-SYN-004",
+          "kind": "DRAWING",
+          "anchor": "S-03 overlapping dimension",
+          "description": "Synthetic dimension is ambiguous and cannot be resolved without an unstated assumption.",
+          "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ],
+      "numerical_basis": {
+        "method": "Reviewer resolution blocked",
+        "formula": null,
+        "inputs": [],
+        "units": "m3",
+        "assumptions": ["Do not assume an unstated dimension."],
+        "tolerance": {
+          "kind": "APPROVED_CASE_SPECIFIC",
+          "value": null,
+          "note": "No tolerance is set until the geometry is resolved."
+        },
+        "expected": null,
+        "actual": null,
+        "delta": null
+      },
+      "adjudication_status": "UNRESOLVED",
+      "reviewer_id": "REVIEWER-SYN-001",
+      "version": 1,
+      "supersedes": null
+    }
+  ]
+}

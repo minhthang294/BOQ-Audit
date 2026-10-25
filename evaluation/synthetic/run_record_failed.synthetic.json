@@ -1,0 +1,58 @@
+{
+  "schema_version": "q10.run_record/1",
+  "run_record_id": "RUN-SYN-003",
+  "attempt_id": "ATT-SYN-003",
+  "corpus_id": "CORPUS-SYN-001",
+  "package_id": "JOB-SYN-001",
+  "reference_package_id": "PKG-SYN-REF-001",
+  "reference_version": 1,
+  "source_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "input_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "output_digest": null,
+  "data_origin": "SYNTHETIC",
+  "attempt_status": "FAILED",
+  "created_at": "2026-10-25T09:50:00Z",
+  "app": {
+    "app_revision": "8cdacddc3ec8187d29d20d2bc1792197abe55bdd",
+    "deployment_revision": "SYNTHETIC-DEPLOY-001"
+  },
+  "runtime": {
+    "model_id": "synthetic-model",
+    "provider": "synthetic-provider",
+    "cli_version": "synthetic-cli-0",
+    "skill_bundle_id": "SKILL-SYN-001",
+    "skill_version": "1.0.0",
+    "skill_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "prompt_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "config_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "sources": [
+    {
+      "doc_id": "DOC-SYN-DWG-001",
+      "revision": "R01",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "doc_id": "DOC-SYN-BOQ-001",
+      "revision": "R01",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "artifacts": [],
+  "metrics": {
+    "tp": 0,
+    "fp": 0,
+    "fn": 0,
+    "unresolved": 0,
+    "unscored": 0,
+    "precision": null,
+    "recall": null,
+    "precision_denominator": 0,
+    "recall_denominator": 0,
+    "denominator_notes": [
+      "precision: N/A (zero denominator)",
+      "recall: N/A (zero denominator)",
+      "Failed attempt retained; no findings were scored."
+    ]
+  }
+}
