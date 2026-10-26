@@ -79,7 +79,7 @@ def _prepare_quality_artifact(job, attempt: int, run_id: int) -> _QualityArtifac
     source_digest = _source_digest(job)
     snapshot = quality.create_snapshot(
         attempt_root,
-        settings.data_dir / "audit_quality",
+        settings.data_dir / "controller",
         allowed_source_root=attempt_root,
     )
     validation = quality.validate_snapshot(

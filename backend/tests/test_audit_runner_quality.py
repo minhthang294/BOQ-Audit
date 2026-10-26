@@ -330,3 +330,43 @@ def test_bundled_manifest_matches_tracked_source() -> None:
     assert audit_runner._BUNDLED_SKILL_MANIFEST.read_bytes() == (
         repo_root / "docs/plans/BOQ_AUDIT_SKILL_MANIFEST.json"
     ).read_bytes()
+
+
+def test_quality_artifact_uses_contract_controller_root(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "input.pdf"
+    source.write_bytes(b"source")
+    settings = SimpleNamespace(
+        jobs_dir=tmp_path / "jobs",
+        data_dir=tmp_path / "data",
+        boq_audit_skill_path=tmp_path / "skills" / "boq-audit" / "SKILL.md",
+    )
+    snapshot = SimpleNamespace(snapshot_id="snap-controller", manifest=())
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_bytes(b"{}")
+    validation = SimpleNamespace(receipt_path=receipt_path)
+    captured = {}
+    monkeypatch.setattr(audit_runner, "get_settings", lambda: settings)
+
+    def create_snapshot(source_attempt, controller_root, **kwargs):
+        captured["controller_root"] = controller_root
+        return snapshot
+
+    def validate_snapshot(*args, **kwargs):
+        captured["validation_kwargs"] = kwargs
+        return validation
+
+    monkeypatch.setattr(quality, "create_snapshot", create_snapshot)
+    monkeypatch.setattr(quality, "validate_snapshot", validate_snapshot)
+    job = SimpleNamespace(
+        job_code="BOQ-000001",
+        input_file_path=str(source),
+        estimate_input=None,
+        narrative_input=None,
+    )
+
+    artifact = audit_runner._prepare_quality_artifact(job, 1, 42)
+
+    assert captured["controller_root"] == settings.data_dir / "controller"
+    assert captured["validation_kwargs"]["stage"] == "release"
+    assert captured["validation_kwargs"]["run_id"] == 42
+    assert artifact.receipt_digest == hashlib.sha256(b"{}").hexdigest()
