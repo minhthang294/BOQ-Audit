@@ -18,6 +18,20 @@ export interface Job {
 export interface AuditRun { attempt: number; started_at: string; ended_at: string | null; duration_seconds: number | null; status: string }
 export interface AttemptArtifact { name: string; size: number }
 export interface AttemptArtifacts { attempts: { attempt: number; status: string; artifacts: AttemptArtifact[] }[]; legacy: AttemptArtifact[] }
+export interface AdminJobQuality {
+  job_code: string; attempt: number | null; stage: string | null;
+  freshness_status: "NOT_REVIEWED" | "NOT_VERIFIED" | "INVALIDATED";
+  invalidation_event_type: string | null;
+  quality: {
+    controller_status: string; candidate_release_status: string | null;
+    advisory: boolean; enforcing: boolean; validator_exit_code: number | null;
+    open_record_count: number | null; open_issue_count: number | null;
+    blocking_checks: string[] | null; critical_errors: number | null; warnings: number | null;
+    error_code: string | null; missing_outputs: string[] | null;
+  } | null;
+  coverage_status: "UNAVAILABLE" | string; coverage: Record<string, unknown> | null;
+  coverage_limitation: string;
+}
 export interface AICapacity { available: boolean; ready: boolean | null; checked_at: string }
 export interface ChatMessage { id: number; role: "user" | "assistant"; content: string; status: "PENDING" | "COMPLETED" | "FAILED"; created_at: string }
 export interface ChatSnapshot { enabled: boolean; messages: ChatMessage[]; busy: boolean }
