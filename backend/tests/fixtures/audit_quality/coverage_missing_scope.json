@@ -1,0 +1,20 @@
+{
+  "inventory": {
+    "documents": [{"document_id": "drawing-a", "revision_digest": "sha256:rev-a"}],
+    "pages": [
+      {"page_id": "drawing-a-P00001", "document_id": "drawing-a", "revision_digest": "sha256:rev-a", "pdf_page": 1},
+      {"page_id": "drawing-a-P00002", "document_id": "drawing-a", "revision_digest": "sha256:rev-a", "pdf_page": 2}
+    ],
+    "targets": [
+      {"target_id": "bearing-1", "document_id": "drawing-a", "revision_digest": "sha256:rev-a", "page_ids": ["drawing-a-P00001"]},
+      {"target_id": "joint-1", "document_id": "drawing-a", "revision_digest": "sha256:rev-a", "page_ids": ["drawing-a-P00002"]}
+    ],
+    "expected_work_items": [
+      {"check_id": "check-bearing-1", "document_id": "drawing-a", "revision_digest": "sha256:rev-a", "page_ids": ["drawing-a-P00001"], "target_ids": ["bearing-1"]},
+      {"check_id": "check-joint-1", "document_id": "drawing-a", "revision_digest": "sha256:rev-a", "page_ids": ["drawing-a-P00002"], "target_ids": ["joint-1"]}
+    ]
+  },
+  "work_items": [
+    {"check_id": "check-bearing-1", "document_id": "drawing-a", "revision_digest": "sha256:rev-a", "page_ids": ["drawing-a-P00001"], "target_ids": ["bearing-1"], "execution_status": "DONE", "result_status": "CHECKED", "applicability_reason": null, "evidence_ids": ["drawing-a-P00001:detail-1"]}
+  ]
+}
