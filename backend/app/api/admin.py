@@ -1,18 +1,19 @@
 from pathlib import Path
+import json
 import logging
 import shutil
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import admin_user
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.models.entities import Job, JobOutput, JobStatus, OutputType, User
-from app.schemas.api import AdminJobListResponse, AdminJobResponse, AdminUpdateJob, AttemptArtifactsResponse, MessageResponse, OutputResponse
-from app.services.audit_quality_invalidation import has_quality_review, record_mutation_invalidation
+from app.models.entities import AuditRun, Job, JobOutput, JobStatus, OutputType, User
+from app.schemas.api import AdminJobListResponse, AdminJobResponse, AdminQualityDetails, AdminQualityResponse, AdminUpdateJob, AttemptArtifactsResponse, MessageResponse, OutputResponse
+from app.services.audit_quality_invalidation import has_quality_review, latest_event, latest_review, record_mutation_invalidation
 from app.storage.files import EXCEL_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 
 router = APIRouter(prefix="/admin/jobs", tags=["admin"])
@@ -86,6 +87,55 @@ async def list_admin_jobs(
 @router.get("/{job_code}", response_model=AdminJobResponse)
 async def get_admin_job(job_code: str, _: User = Depends(admin_user), db: Session = Depends(get_db)):
     return find_job(db, job_code)
+
+
+def _quality_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _quality_strings(value: object, *, max_items: int = 100, max_length: int = 200) -> list[str] | None:
+    if not isinstance(value, list) or len(value) > max_items or any(not isinstance(item, str) or len(item) > max_length for item in value):
+        return None
+    return value
+
+
+@router.get("/{job_code}/quality", response_model=AdminQualityResponse)
+async def get_admin_job_quality(job_code: str, response: Response, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "private, no-store"
+    job = find_job(db, job_code)
+    review = latest_review(db, job.id)
+    if review is None:
+        return AdminQualityResponse(job_code=job_code, freshness_status="NOT_REVIEWED")
+
+    event = latest_event(db, review.id)
+    try:
+        aggregate = json.loads(review.quality_aggregate)
+    except (TypeError, json.JSONDecodeError):
+        aggregate = None
+    if not isinstance(aggregate, dict):
+        aggregate = {}
+    quality = AdminQualityDetails(
+        controller_status=review.controller_status,
+        candidate_release_status=review.candidate_release_status,
+        validator_exit_code=aggregate.get("validator_exit_code") if isinstance(aggregate.get("validator_exit_code"), int) and not isinstance(aggregate.get("validator_exit_code"), bool) else None,
+        open_record_count=_quality_int(aggregate.get("open_record_count")),
+        open_issue_count=_quality_int(aggregate.get("open_issue_count")),
+        blocking_checks=_quality_strings(aggregate.get("blocking_checks")),
+        critical_errors=_quality_int(aggregate.get("critical_errors")),
+        warnings=_quality_int(aggregate.get("warnings")),
+        error_code=aggregate.get("error_code") if isinstance(aggregate.get("error_code"), str) and len(aggregate["error_code"]) <= 100 else None,
+        missing_outputs=_quality_strings(aggregate.get("missing_outputs"), max_items=20, max_length=64),
+    )
+    run = db.get(AuditRun, review.run_id)
+    invalidated = event is not None and event.event_type in {"REVOKED", "QUALITY_INVALIDATED"}
+    return AdminQualityResponse(
+        job_code=job_code,
+        attempt=run.attempt if run else None,
+        stage=review.stage,
+        freshness_status="INVALIDATED" if invalidated else "NOT_VERIFIED",
+        invalidation_event_type=event.event_type if invalidated else None,
+        quality=quality,
+    )
 
 
 @router.get("/{job_code}/attempts", response_model=AttemptArtifactsResponse)

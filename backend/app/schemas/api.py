@@ -134,6 +134,33 @@ class AttemptArtifactsResponse(BaseModel):
     legacy: list[AttemptArtifactResponse]
 
 
+class AdminQualityDetails(BaseModel):
+    controller_status: str
+    candidate_release_status: str | None
+    advisory: bool = True
+    enforcing: bool = False
+    validator_exit_code: int | None = None
+    open_record_count: int | None = None
+    open_issue_count: int | None = None
+    blocking_checks: list[str] | None = None
+    critical_errors: int | None = None
+    warnings: int | None = None
+    error_code: str | None = None
+    missing_outputs: list[str] | None = None
+
+
+class AdminQualityResponse(BaseModel):
+    job_code: str
+    attempt: int | None = None
+    stage: str | None = None
+    freshness_status: str
+    invalidation_event_type: str | None = None
+    quality: AdminQualityDetails | None = None
+    coverage_status: str = "UNAVAILABLE"
+    coverage: dict[str, Any] | None = None
+    coverage_limitation: str = "Chưa có expected inventory và work-item ledger đáng tin cậy được lưu cho API này."
+
+
 class JobListResponse(BaseModel):
     items: list[JobResponse]
     total: int
