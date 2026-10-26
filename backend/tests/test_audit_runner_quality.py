@@ -27,6 +27,7 @@ def _database(tmp_path: Path) -> tuple[object, sessionmaker]:
 
 
 def _seed_processing_job(engine, tmp_path: Path, *, attempts: int = 1) -> tuple[int, list[int]]:
+    (tmp_path / "input.pdf").write_bytes(b"source")
     with Session(engine) as db:
         user = User(name="Admin", email="admin@example.com", password_hash="hash", role=UserRole.ADMIN)
         job = Job(
@@ -73,6 +74,18 @@ def _artifact(
     error_code: str | None = None,
     error_message: str | None = None,
 ) -> audit_runner._QualityArtifact:
+    source_digest = audit_runner._source_digest(
+        SimpleNamespace(
+            input_file_path=str(tmp_path / "input.pdf"),
+            estimate_input=None,
+            narrative_input=None,
+        )
+    )
+    snapshot_path = tmp_path / "data" / "controller" / "snapshots" / "snap-test"
+    snapshot_path.mkdir(parents=True, exist_ok=True)
+    receipt_path = tmp_path / "data" / "controller" / "receipts" / "snap-test" / "release.json"
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_bytes(b"{}")
     manifest = tuple(
         quality.ManifestEntry(
             f"output/{path.name}",
@@ -87,7 +100,7 @@ def _artifact(
         run_id=run_id,
         snapshot_id="snap-test",
         stage="release",
-        source_digest="a" * 64,
+        source_digest=source_digest,
         skill_digest="b" * 64,
         input_digest="c" * 64,
         validator_exit_code=0,
@@ -98,11 +111,11 @@ def _artifact(
         controller_status=controller_status,
     )
     return audit_runner._QualityArtifact(
-        snapshot=SimpleNamespace(snapshot_id="snap-test", manifest=manifest),
+        snapshot=SimpleNamespace(snapshot_id="snap-test", path=snapshot_path, manifest=manifest),
         validation=SimpleNamespace(
             receipt=receipt,
             controller_status=controller_status,
-            receipt_path=tmp_path / "release-receipt.json",
+            receipt_path=receipt_path,
             report=(
                 {"open_issue_count": 0, "warning": "metadata only"}
                 if controller_status == "PASS"
@@ -111,7 +124,7 @@ def _artifact(
             error_code=error_code,
             error_message=error_message,
         ),
-        source_digest="a" * 64,
+        source_digest=source_digest,
         receipt_digest="f" * 64,
     )
 
@@ -159,12 +172,13 @@ def test_finish_persists_one_advisory_release_review_for_current_run(
         assert review.candidate_release_status == (
             quality.RELEASE_READY_STATUS if controller_status == "PASS" else None
         )
-        assert review.source_digest == "a" * 64
+        assert review.source_digest == audit_runner._source_digest(job)
         assert json.loads(review.receipt_digests) == {"release": "f" * 64}
         assert json.loads(review.quality_aggregate) == {
             "advisory": True,
             "blocking_checks": [],
-            "critical_errors": 1,
+            "counter_source": "unverified_model_summary",
+            "critical_errors": None,
             "enforcing": False,
             "error_code": "REPORT_INVALID" if controller_status == "ERROR" else None,
             "error_reason": "fresh report missing" if controller_status == "ERROR" else None,
@@ -175,7 +189,7 @@ def test_finish_persists_one_advisory_release_review_for_current_run(
             "trusted": False,
             "validator_exit_code": 0,
             "warning": "metadata only" if controller_status == "PASS" else None,
-            "warnings": 2,
+            "warnings": None,
         }
         manifest = json.loads(review.output_manifest)
         assert {item["output_id"] for item in manifest} == {output.id for output in job.outputs}
@@ -219,6 +233,60 @@ def test_finish_marks_review_error_when_output_changes_after_snapshot(tmp_path: 
         assert "output/BOQ_Audit_Report.xlsx" in aggregate["error_reason"]
 
 
+@pytest.mark.parametrize(
+    ("returncode", "missing_outputs", "error_code"),
+    [
+        (1, set(), "AUDIT_PROCESS_FAILED"),
+        (0, {OutputType.ANNOTATED_PDF}, "REQUIRED_OUTPUT_MISSING"),
+    ],
+)
+def test_finish_never_keeps_validator_pass_after_failed_audit(
+    tmp_path: Path,
+    monkeypatch,
+    returncode: int,
+    missing_outputs: set[OutputType],
+    error_code: str,
+) -> None:
+    engine, session_factory = _database(tmp_path)
+    job_id, (run_id,) = _seed_processing_job(engine, tmp_path)
+    outputs = _outputs(tmp_path)
+    outputs = [item for item in outputs if item[1] not in missing_outputs]
+    artifact = _artifact(tmp_path, run_id, outputs)
+    _configure(monkeypatch, engine, tmp_path)
+
+    assert audit_runner._finish(
+        job_id, run_id, 0.0, returncode, "", outputs, quality_artifact=artifact
+    )
+
+    with session_factory() as db:
+        review = db.scalar(select(AuditQualityReview))
+        assert review is not None
+        assert review.controller_status == "ERROR"
+        assert review.candidate_release_status is None
+        assert json.loads(review.quality_aggregate)["error_code"] == error_code
+
+
+def test_finish_marks_review_error_when_source_changes_after_snapshot(tmp_path: Path, monkeypatch) -> None:
+    engine, session_factory = _database(tmp_path)
+    job_id, (run_id,) = _seed_processing_job(engine, tmp_path)
+    outputs = _outputs(tmp_path)
+    artifact = _artifact(tmp_path, run_id, outputs)
+    (tmp_path / "input.pdf").write_bytes(b"changed source")
+    _configure(monkeypatch, engine, tmp_path)
+
+    assert audit_runner._finish(job_id, run_id, 0.0, 0, "", outputs, quality_artifact=artifact)
+
+    with session_factory() as db:
+        review = db.scalar(select(AuditQualityReview))
+        assert review is not None
+        assert review.controller_status == "ERROR"
+        assert review.candidate_release_status is None
+        aggregate = json.loads(review.quality_aggregate)
+        assert aggregate["error_code"] == "SOURCE_INTEGRITY"
+        assert aggregate["critical_errors"] is None
+        assert aggregate["warnings"] is None
+
+
 def test_finish_does_not_persist_review_for_stale_run(tmp_path: Path, monkeypatch) -> None:
     engine, session_factory = _database(tmp_path)
     job_id, (stale_run_id, _newest_run_id) = _seed_processing_job(engine, tmp_path, attempts=2)
@@ -252,6 +320,52 @@ def test_runner_finalizes_when_quality_preparation_fails(tmp_path: Path, monkeyp
         assert job is not None
         assert job.status == JobStatus.REVIEW
         assert len(job.outputs) == 2
+        assert list(db.scalars(select(AuditQualityReview))) == []
+
+
+def test_runner_skips_quality_preparation_for_stale_run(tmp_path: Path, monkeypatch) -> None:
+    engine, session_factory = _database(tmp_path)
+    job_id, (run_id, _newest_run_id) = _seed_processing_job(engine, tmp_path, attempts=2)
+    outputs = _outputs(tmp_path)
+    _configure(monkeypatch, engine, tmp_path)
+    monkeypatch.setattr(audit_runner, "_execute", lambda *_: (0, False, "", outputs))
+    monkeypatch.setattr(
+        audit_runner,
+        "_prepare_quality_artifact",
+        lambda *_: pytest.fail("stale run must not create a snapshot"),
+    )
+
+    audit_runner.run_audit_job(job_id, run_id)
+
+    with session_factory() as db:
+        assert list(db.scalars(select(AuditQualityReview))) == []
+
+
+def test_runner_discards_snapshot_if_run_becomes_stale_during_validation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    engine, session_factory = _database(tmp_path)
+    job_id, (run_id,) = _seed_processing_job(engine, tmp_path)
+    outputs = _outputs(tmp_path)
+    artifact = _artifact(tmp_path, run_id, outputs)
+    _configure(monkeypatch, engine, tmp_path)
+    monkeypatch.setattr(audit_runner, "_execute", lambda *_: (0, False, "", outputs))
+
+    def prepare_and_supersede(*_args):
+        with Session(engine) as db:
+            job = db.get(Job, job_id)
+            assert job is not None
+            db.add(AuditRun(job=job, attempt=2, status="RUNNING", started_at=utcnow()))
+            db.commit()
+        return artifact
+
+    monkeypatch.setattr(audit_runner, "_prepare_quality_artifact", prepare_and_supersede)
+
+    audit_runner.run_audit_job(job_id, run_id)
+
+    assert not artifact.snapshot.path.exists()
+    assert not artifact.validation.receipt_path.exists()
+    with session_factory() as db:
         assert list(db.scalars(select(AuditQualityReview))) == []
 
 

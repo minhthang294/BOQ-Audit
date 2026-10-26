@@ -99,6 +99,48 @@ def _prepare_quality_artifact(job, attempt: int, run_id: int) -> _QualityArtifac
     )
 
 
+def _quality_run_is_current(job_id: int, run_id: int) -> bool:
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        run = db.get(AuditRun, run_id)
+        newest_id = db.scalar(
+            select(AuditRun.id)
+            .where(AuditRun.job_id == job_id)
+            .order_by(AuditRun.attempt.desc())
+            .limit(1)
+        )
+        return bool(
+            job
+            and run
+            and newest_id == run_id
+            and run.status == "RUNNING"
+            and job.status == JobStatus.PROCESSING
+        )
+
+
+def _discard_stale_quality_artifact(artifact: _QualityArtifact) -> None:
+    controller_root = (get_settings().data_dir / "controller").resolve()
+    snapshots_root = controller_root / "snapshots"
+    receipts_root = controller_root / "receipts"
+    snapshot_path = artifact.snapshot.path.absolute()
+    receipt_path = artifact.validation.receipt_path.absolute()
+    if (
+        snapshot_path.is_symlink()
+        or receipt_path.is_symlink()
+        or snapshot_path.parent != snapshots_root
+        or receipt_path.parent.parent != receipts_root
+        or receipt_path.parent.name != artifact.snapshot.snapshot_id
+    ):
+        logger.error("audit_stale_quality_artifact_outside_controller")
+        return
+    receipt_path.unlink(missing_ok=True)
+    shutil.rmtree(snapshot_path, ignore_errors=True)
+    try:
+        receipt_path.parent.rmdir()
+    except OSError:
+        pass
+
+
 def _prompt(job, skill_path, workspace):
     estimate = job.estimate_input.file_path if job.estimate_input else "not provided"
     narrative = job.narrative_input.file_path if job.narrative_input else "not provided"
@@ -195,8 +237,9 @@ def _quality_aggregate(
         "open_record_count": receipt.open_record_count,
         "open_issue_count": report.get("open_issue_count") if report else None,
         "blocking_checks": list(receipt.blocking_checks),
-        "critical_errors": job.critical_errors,
-        "warnings": job.warnings,
+        "critical_errors": None,
+        "warnings": None,
+        "counter_source": "unverified_model_summary",
         "warning": report.get("warning") if report else None,
         "error_code": artifact.validation.error_code if error_code is None else error_code,
         "error_reason": artifact.validation.error_message if error_reason is None else error_reason,
@@ -291,16 +334,31 @@ def _persist_quality_review(
     missing_outputs: set[OutputType],
 ) -> AuditQualityReview:
     output_entries, integrity_errors = _output_manifest(job, run, artifact, outputs)
+    try:
+        if _source_digest(job) != artifact.source_digest:
+            integrity_errors.append("source")
+    except (OSError, ValueError):
+        integrity_errors.append("source")
     receipt = artifact.validation.receipt
     controller_status = artifact.validation.controller_status
     candidate_release_status = receipt.candidate_release_status
     error_code = artifact.validation.error_code
     error_reason = artifact.validation.error_message
-    if integrity_errors:
+    if returncode != 0:
         controller_status = "ERROR"
         candidate_release_status = None
-        error_code = _OUTPUT_INTEGRITY_ERROR_CODE
-        error_reason = "output changed after snapshot: " + ", ".join(integrity_errors)
+        error_code = "AUDIT_PROCESS_FAILED"
+        error_reason = "audit process did not exit successfully"
+    elif missing_outputs:
+        controller_status = "ERROR"
+        candidate_release_status = None
+        error_code = "REQUIRED_OUTPUT_MISSING"
+        error_reason = "required output missing: " + ", ".join(sorted(kind.value for kind in missing_outputs))
+    elif integrity_errors:
+        controller_status = "ERROR"
+        candidate_release_status = None
+        error_code = "SOURCE_INTEGRITY" if integrity_errors == ["source"] else _OUTPUT_INTEGRITY_ERROR_CODE
+        error_reason = "source files changed or became unavailable after snapshot" if integrity_errors == ["source"] else "output changed after snapshot: " + ", ".join(integrity_errors)
     review = AuditQualityReview(
         run_id=run.id,
         reviewer_user_id=None,
@@ -500,10 +558,12 @@ def run_audit_job(job_id: int, run_id: int, stop: Event | None = None, heartbeat
         logger.exception("audit_job_failed job_id=%s run_id=%s", job_id, run_id)
         returncode, interrupted, message, outputs = None, stop.is_set(), f"Audit tự động thất bại: {exc}"[:10000], []
     quality_artifact: _QualityArtifact | None = None
-    if not interrupted:
+    if not interrupted and _quality_run_is_current(job_id, run_id):
         try:
             quality_artifact = _prepare_quality_artifact(execution_job, attempt, run_id)
         except Exception:
             logger.exception("audit_quality_advisory_failed job_id=%s run_id=%s", job_id, run_id)
     if not interrupted:
-        _finish(job_id, run_id, started, returncode, message, outputs, quality_artifact=quality_artifact)
+        finished = _finish(job_id, run_id, started, returncode, message, outputs, quality_artifact=quality_artifact)
+        if quality_artifact is not None and not finished:
+            _discard_stale_quality_artifact(quality_artifact)
