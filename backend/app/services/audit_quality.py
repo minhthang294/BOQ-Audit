@@ -722,6 +722,7 @@ def _walk_regular_files(
     *,
     label: str,
     error_type: type[QualityAdapterError] | type[SnapshotError],
+    ignore_cache_dirs: bool = False,
 ) -> dict[str, os.stat_result]:
     """Return regular files by canonical relative path, rejecting links/specials."""
     root = _absolute(root)
@@ -747,6 +748,8 @@ def _walk_regular_files(
             except OSError as exc:
                 raise error_type(f"{label} entry is unreadable: {entry.path}") from exc
             if stat.S_ISDIR(metadata.st_mode):
+                if ignore_cache_dirs and entry.name == "__pycache__":
+                    continue
                 stack.append((Path(entry.path), relative))
             elif stat.S_ISREG(metadata.st_mode):
                 result[relative] = metadata
@@ -840,7 +843,12 @@ def verify_pinned_bundle(
     if computed_digest != expected_digest:
         raise BundleVerificationError("pinned bundle digest does not match the trusted expected digest")
 
-    actual = _walk_regular_files(root, label="pinned bundle", error_type=BundleVerificationError)
+    actual = _walk_regular_files(
+        root,
+        label="pinned bundle",
+        error_type=BundleVerificationError,
+        ignore_cache_dirs=True,
+    )
     expected_paths = set(files)
     actual_paths = set(actual)
     if actual_paths != expected_paths:
