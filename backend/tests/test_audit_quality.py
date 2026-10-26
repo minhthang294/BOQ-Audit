@@ -793,6 +793,22 @@ def test_pin_mismatch_is_error(tmp_path: Path) -> None:
     assert result.error_code == aq.BundleVerificationError.code
 
 
+def test_pinned_bundle_ignores_generated_pycache(tmp_path: Path) -> None:
+    bundle_root, manifest_path, expected_digest = _fake_bundle(tmp_path)
+    cache = bundle_root / "scripts/__pycache__"
+    cache.mkdir()
+    (cache / "x.pyc").write_bytes(b"harmless bytecode")
+
+    pinned = aq.verify_pinned_bundle(
+        bundle_root,
+        manifest_path,
+        expected_digest=expected_digest,
+    )
+
+    assert pinned.digest == expected_digest
+    assert pinned.validator_path == bundle_root / "scripts/validate_run.py"
+
+
 def test_self_consistent_tampered_bundle_fails_trusted_expected_digest(tmp_path: Path) -> None:
     bundle_root, manifest_path, original_digest = _fake_bundle(tmp_path)
     validator = bundle_root / "scripts/validate_run.py"
