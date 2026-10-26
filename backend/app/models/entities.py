@@ -209,3 +209,45 @@ class JobOutput(Base):
     file_size: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     job: Mapped[Job] = relationship(back_populates="outputs")
+
+
+class AuditQualityReview(Base):
+    __tablename__ = "audit_quality_reviews"
+    __table_args__ = (
+        UniqueConstraint("run_id", "snapshot_id", name="uq_audit_quality_reviews_run_snapshot"),
+        UniqueConstraint("snapshot_id", name="uq_audit_quality_reviews_snapshot_id"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("audit_runs.id", name="fk_audit_quality_reviews_run_id"),
+        index=True,
+    )
+    reviewer_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", name="fk_audit_quality_reviews_reviewer_user_id"),
+        nullable=True,
+    )
+    snapshot_id: Mapped[str] = mapped_column(String(128))
+    stage: Mapped[str] = mapped_column(String(16))
+    controller_status: Mapped[str] = mapped_column(String(16))
+    candidate_release_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    quality_aggregate: Mapped[str] = mapped_column(Text)
+    source_digest: Mapped[str] = mapped_column(String(64))
+    skill_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    input_digest: Mapped[str] = mapped_column(String(64))
+    receipt_digests: Mapped[str] = mapped_column(Text)
+    output_manifest_digest: Mapped[str] = mapped_column(String(64))
+    customer_fields_digest: Mapped[str] = mapped_column(String(64))
+    output_manifest: Mapped[str] = mapped_column(Text)
+
+
+class AuditQualityReviewEvent(Base):
+    __tablename__ = "audit_quality_review_events"
+    event_id: Mapped[int] = mapped_column(primary_key=True)
+    review_id: Mapped[int] = mapped_column(
+        ForeignKey("audit_quality_reviews.id", name="fk_audit_quality_review_events_review_id"),
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(32))
+    actor_id: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str] = mapped_column(Text)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
