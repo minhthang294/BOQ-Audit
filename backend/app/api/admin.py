@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.entities import Job, JobOutput, JobStatus, OutputType, User
 from app.schemas.api import AdminJobListResponse, AdminJobResponse, AdminUpdateJob, AttemptArtifactsResponse, MessageResponse, OutputResponse
+from app.services.audit_quality_invalidation import has_quality_review, record_mutation_invalidation
 from app.storage.files import EXCEL_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 
 router = APIRouter(prefix="/admin/jobs", tags=["admin"])
@@ -139,7 +140,7 @@ async def download_narrative(job_code: str, _: User = Depends(admin_user), db: S
 
 
 @router.patch("/{job_code}", response_model=AdminJobResponse)
-async def update_job(job_code: str, payload: AdminUpdateJob, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+async def update_job(job_code: str, payload: AdminUpdateJob, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
     job = _lock_job(db, job_code)
     values = payload.model_dump(exclude_unset=True)
     if values.get("status") in {JobStatus.SUBMITTED, JobStatus.PROCESSING}:
@@ -148,11 +149,18 @@ async def update_job(job_code: str, payload: AdminUpdateJob, _: User = Depends(a
         raise HTTPException(status.HTTP_409_CONFLICT, "Không thể đổi trạng thái khi đang xử lý")
     if values.get("status") == JobStatus.COMPLETED:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Dùng thao tác hoàn thành hồ sơ")
+    changed = [
+        field
+        for field in ("status", "critical_errors", "warnings", "customer_notes")
+        if field in values and values[field] != getattr(job, field)
+    ]
     for key, value in values.items():
         setattr(job, key, value)
     if payload.status is not None:
         from app.models.entities import utcnow
         job.completed_at = utcnow() if payload.status == JobStatus.FAILED else None
+    if changed:
+        record_mutation_invalidation(db, job.id, admin.id, f"admin PATCH changed: {', '.join(changed)}")
     db.commit()
     return find_job(db, job_code)
 
@@ -162,7 +170,7 @@ async def upload_output(
     job_code: str,
     file_type: OutputType = Form(),
     file: UploadFile = File(),
-    _: User = Depends(admin_user),
+    admin: User = Depends(admin_user),
     db: Session = Depends(get_db),
 ):
     job = find_job(db, job_code)
@@ -194,6 +202,7 @@ async def upload_output(
         db.add(output)
         for old in old_outputs:
             db.delete(old)
+        record_mutation_invalidation(db, job.id, admin.id, f"admin output upload: {file_type.value}")
         db.commit()
         db.refresh(output)
         for old in old_outputs:
@@ -207,7 +216,7 @@ async def upload_output(
 
 
 @router.delete("/{job_code}/outputs/{output_id}", response_model=MessageResponse)
-async def delete_output(job_code: str, output_id: int, _: User = Depends(admin_user), db: Session = Depends(get_db)):
+async def delete_output(job_code: str, output_id: int, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
     job = _lock_job(db, job_code)
     if job.status in BUSY_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Không thể sửa kết quả khi hồ sơ đang chờ hoặc xử lý")
@@ -215,6 +224,7 @@ async def delete_output(job_code: str, output_id: int, _: User = Depends(admin_u
     if not output:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tệp kết quả")
     path = Path(output.file_path)
+    record_mutation_invalidation(db, job.id, admin.id, f"admin output delete: {output.file_type.value}")
     db.delete(output)
     db.commit()
     if "attempts" not in path.parts:
@@ -227,6 +237,8 @@ async def delete_job(job_code: str, admin: User = Depends(admin_user), db: Sessi
     job = _lock_job(db, job_code)
     if job.status == JobStatus.PROCESSING or job.input_file_path == "pending":
         raise HTTPException(status.HTTP_409_CONFLICT, "Không thể xóa hồ sơ đang lưu hoặc xử lý")
+    if has_quality_review(db, job.id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Hồ sơ có lịch sử chất lượng, không thể xóa cứng")
     jobs_root = get_settings().jobs_dir.resolve()
     job_directory = (jobs_root / job.job_code).resolve()
     if job_directory.parent != jobs_root:

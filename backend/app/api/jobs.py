@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.core.telegram import notify_pdf_upload
 from app.models.entities import Job, JobEstimateInput, JobNarrativeInput, JobStatus, User, UserRole, utcnow
 from app.schemas.api import AICapacityResponse, CodexUsageResponse, CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
+from app.services.audit_quality_invalidation import has_quality_review, record_mutation_invalidation
 from app.storage.files import EXCEL_MIMES, NARRATIVE_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 from app.services.codex_usage import get_codex_usage
 
@@ -234,6 +235,7 @@ async def retry_job(
     if active_jobs >= MAX_ACTIVE_JOBS_PER_USER:
         raise HTTPException(status.HTTP_409_CONFLICT, "Bạn đang có 2 hồ sơ được xử lý. Vui lòng chờ một hồ sơ hoàn thành trước khi thử lại.")
 
+    record_mutation_invalidation(db, job.id, user.id, "customer retry")
     job.outputs.clear()
     job.status = JobStatus.SUBMITTED
     job.started_at = None
@@ -262,8 +264,13 @@ async def rename_job(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    db.rollback()
+    db.execute(text("BEGIN IMMEDIATE"))
     job = owned_job(db, job_code, user)
+    changed = job.project_name != payload.project_name
     job.project_name = payload.project_name
+    if changed:
+        record_mutation_invalidation(db, job.id, user.id, "customer project rename")
     db.commit()
     return visible_customer_job(owned_job(db, job_code, user))
 
@@ -275,6 +282,8 @@ async def delete_job(job_code: str, user: User = Depends(current_user), db: Sess
     job = owned_job(db, job_code, user)
     if job.status == JobStatus.PROCESSING or job.input_file_path == "pending":
         raise HTTPException(status.HTTP_409_CONFLICT, "Không thể xóa hồ sơ đang lưu hoặc xử lý")
+    if has_quality_review(db, job.id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Hồ sơ có lịch sử chất lượng, không thể xóa cứng")
     jobs_root = get_settings().jobs_dir.resolve()
     job_directory = (jobs_root / job.job_code).resolve()
     if job_directory.parent != jobs_root:
