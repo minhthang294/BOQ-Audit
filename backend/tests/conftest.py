@@ -1,11 +1,17 @@
+import atexit
 import os
 import asyncio
+import shutil
+import tempfile
 from pathlib import Path
 
 import httpx2 as httpx
 import pytest
 
-TEST_DATA = Path("/tmp/boq-audit-tests")
+# Each pytest process gets its own database/data root before the app is imported.
+# Overlapping runs previously shared /tmp/boq-audit-tests and deleted each other's tables/rows.
+TEST_DATA = Path(tempfile.mkdtemp(prefix="boq-audit-tests-")).resolve()
+atexit.register(shutil.rmtree, TEST_DATA, ignore_errors=True)
 os.environ.update(
     {
         "DATABASE_URL": f"sqlite:///{TEST_DATA / 'test.db'}",

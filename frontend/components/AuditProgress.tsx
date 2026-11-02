@@ -10,7 +10,7 @@ const stages = [
   "Rà soát độc lập lượt 2",
   "Tái kiểm tra và đóng cảnh báo",
   "Kiểm tra báo cáo đầu ra",
-  "Duyệt và công bố",
+  "Hoàn tất và bàn giao báo cáo",
 ];
 
 function progressIndex(job: Job) {
@@ -33,7 +33,7 @@ export function AuditProgress({ job, compact = false }: { job: Job; compact?: bo
   const failed = job.status === "FAILED";
   const running = job.status === "PROCESSING";
   const percent = complete ? 100 : Math.max(4, Math.round(current / stages.length * 100));
-  const currentLabel = complete ? "Đã công bố kết quả" : failed ? "Quy trình tạm dừng" : job.status === "WAITING_FOR_INFO" ? "Chờ bổ sung hồ sơ" : stages[Math.min(current, stages.length - 1)];
+  const currentLabel = complete ? "Đã hoàn tất báo cáo" : failed ? "Quy trình tạm dừng" : job.status === "WAITING_FOR_INFO" ? "Chờ bổ sung hồ sơ" : stages[Math.min(current, stages.length - 1)];
 
   if (compact) return <div className="mt-3" aria-label={`Tiến độ: ${currentLabel}`}>
     <div className="mb-1.5 flex items-center justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-700">{currentLabel}</span><span className="shrink-0 font-mono tabular-nums text-slate-500">{percent}%</span></div>

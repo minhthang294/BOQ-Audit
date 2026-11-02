@@ -52,13 +52,14 @@
     "fp": 0,
     "fn": 0,
     "unresolved": 1,
-    "unscored": 1,
+    "unscored": 2,
     "precision": 1.0,
     "recall": 1.0,
     "precision_denominator": 1,
     "recall_denominator": 1,
     "denominator_notes": [
       "Partial attempt retained and not eligible for a pilot pass.",
+      "Unresolved label and reference not reached are both unscored, not treated as clean.",
       "Unresolved and unscored items are excluded from denominators."
     ]
   }

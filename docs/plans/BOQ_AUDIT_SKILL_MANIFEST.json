@@ -1,18 +1,17 @@
 {
-  "digest": "17c14f63f78c2670428e233c4bfc56623473d1d644cf38d003db477d80c14a2c",
   "algorithm": "sha256(canonical JSON path/hash list)",
   "files": [
     {
       "path": "CHANGELOG.md",
-      "sha256": "d330c6a9326e393f51f3365ea2df8ce402eb8c50adf00538c3a0fc022067714f"
+      "sha256": "a63464fbef4b4bcc5316191481239cc2db986f59f0ec54d5ee8c481251af635b"
     },
     {
       "path": "PACKAGE_MANIFEST.txt",
-      "sha256": "03605588380b614ac3f45dfe6d76cc37948d6eef28fa14e1879b5d8d4d5f018d"
+      "sha256": "265eac308e5e76f261fd37f620df7c7e31b45db23e6a20231c62759c2a328329"
     },
     {
       "path": "PROVENANCE.json",
-      "sha256": "dc1c751e7e39aa47f7d5e0d5436594404360743c8932c888b2c33bc69d5b9ada"
+      "sha256": "595e01d574fe6933689ae9db4230edb8517aab14acdd98720526c1352287ace5"
     },
     {
       "path": "README.md",
@@ -20,7 +19,7 @@
     },
     {
       "path": "SKILL.md",
-      "sha256": "d4f1be0361b4235b06321d8c0164bac644b38a0765db825e37ec8fbd86aa3b6b"
+      "sha256": "64415e1369b30240c7ca3239142e9c8a7d11d0cf9d3d678624dae19cc626220f"
     },
     {
       "path": "legacy/BOQ_Audit_Skill_v5.8.md",
@@ -40,7 +39,11 @@
     },
     {
       "path": "references/codex-execution.md",
-      "sha256": "12ac42ec4260b726342b8d8779525d9e1e69fbcd264eb8dc2a0dfc8ac31e8af0"
+      "sha256": "20d92c9c43033775926785fe1c9487149a3b1f6dafaf2e63d164251d8122842b"
+    },
+    {
+      "path": "references/controller-batch-protocol.md",
+      "sha256": "ea406290a1e199e1266f260a0e5a90606a5c3d5d41a68f15181fcede8ca25810"
     },
     {
       "path": "references/data-and-delivery.md",
@@ -68,7 +71,7 @@
     },
     {
       "path": "references/execution-workflow.md",
-      "sha256": "a59469c51b1f67c97a665c5f616b6aa688795b43a58f1b7799e56462abd05cf2"
+      "sha256": "4f6d71a4daa809b97278cc919281e2b09e4a8c50007cf6784fe9e5341f76c69a"
     },
     {
       "path": "references/functional-closure.md",
@@ -104,7 +107,7 @@
     },
     {
       "path": "references/protocol-v6.4.md",
-      "sha256": "d0578365b6536304dfb4ad8d6de89b22e5c033edbd5e5849534a5c729d0efdbc"
+      "sha256": "31904acc3071723a3a1b98c49f26fb03f11e4002df9a14c01c2c7ccd3fdb4c44"
     },
     {
       "path": "references/reference-cases.md",
@@ -151,6 +154,10 @@
       "sha256": "1e790c48aee4bcae84a16284afa48b9d34107e549d4273095a2cc3ad5c50e7ff"
     },
     {
+      "path": "schemas/audit_batch_ledger_contract.v4.json",
+      "sha256": "42e07516736d0f5a3b78bb4739dde5e793bc66563a71ba9a060f693871a5163d"
+    },
+    {
       "path": "schemas/calculation_ledger.schema.json",
       "sha256": "fdef5aae41791cd7d3a908444b7e555d9c46a75551531a6271845cc0b3cf907b"
     },
@@ -168,7 +175,7 @@
     },
     {
       "path": "schemas/pass_review.schema.json",
-      "sha256": "6f8e38cd988c6bdf0431ba1782f15bc087445d8cc69780d0d31845aac6e3c577"
+      "sha256": "6276559d5e1037d785b424a01b74098df4277a7dee443516a66e9935e8104d1c"
     },
     {
       "path": "schemas/physical_instance_ledger.schema.json",
@@ -192,7 +199,7 @@
     },
     {
       "path": "scripts/validate_run.py",
-      "sha256": "86839c9630e00cf020e8317ce2aaf18084d7efb48f10551b630332db557f02a6"
+      "sha256": "1de1689c2b913d4c1a99169a363bc4b9d425280b0993fe2ca93cb71a1c114903"
     },
     {
       "path": "templates/assumption_ledger.csv",
@@ -244,11 +251,12 @@
     },
     {
       "path": "tests/test_scripts.py",
-      "sha256": "19134aaa432b69e6dc179f7d756b8864ece343c13b6b3d01527d00f4e79dc7f1"
+      "sha256": "d687cd1eeacaf50748fb7bc00f6cb8c45c031ec99cb4f7f9d98850b384bb9d75"
     },
     {
       "path": "tests/test_workflow.py",
-      "sha256": "998256f0df601ef3f15845c11de5bb95e49cfdd69693742686ba02149e3b57d4"
+      "sha256": "cc836d4e8b4be1decd768681a5fc6c958240678516aacf04199f84d3ba19e27b"
     }
-  ]
+  ],
+  "digest": "8fe1a2f9cb2b2907036bf2b466ff3bc264771b7dbd989232fc27f86ce6e6baa5"
 }

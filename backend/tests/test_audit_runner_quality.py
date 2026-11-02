@@ -162,7 +162,8 @@ def test_finish_persists_one_advisory_release_review_for_current_run(
         job = db.get(Job, job_id)
         reviews = list(db.scalars(select(AuditQualityReview)))
         assert job is not None
-        assert job.status == JobStatus.REVIEW
+        assert job.status == JobStatus.COMPLETED
+        assert job.completed_at is not None
         assert len(reviews) == 1
         review = reviews[0]
         assert review.run_id == run_id
@@ -220,8 +221,8 @@ def test_finish_marks_review_error_when_output_changes_after_snapshot(tmp_path: 
         job = db.get(Job, job_id)
         review = db.scalar(select(AuditQualityReview))
         assert job is not None
-        assert job.status == JobStatus.REVIEW
-        assert job.completed_at is None
+        assert job.status == JobStatus.COMPLETED
+        assert job.completed_at is not None
         assert review is not None
         assert review.controller_status == "ERROR"
         assert review.candidate_release_status is None
@@ -318,7 +319,8 @@ def test_runner_finalizes_when_quality_preparation_fails(tmp_path: Path, monkeyp
     with session_factory() as db:
         job = db.get(Job, job_id)
         assert job is not None
-        assert job.status == JobStatus.REVIEW
+        assert job.status == JobStatus.COMPLETED
+        assert job.completed_at is not None
         assert len(job.outputs) == 2
         assert list(db.scalars(select(AuditQualityReview))) == []
 
@@ -391,7 +393,8 @@ def test_runner_finalizes_when_adapter_returns_error_review(tmp_path: Path, monk
         job = db.get(Job, job_id)
         review = db.scalar(select(AuditQualityReview))
         assert job is not None
-        assert job.status == JobStatus.REVIEW
+        assert job.status == JobStatus.COMPLETED
+        assert job.completed_at is not None
         assert review is not None
         assert review.controller_status == "ERROR"
         assert json.loads(review.quality_aggregate)["error_reason"] == "fresh report missing"

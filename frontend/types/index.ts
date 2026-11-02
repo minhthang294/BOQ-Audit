@@ -19,7 +19,7 @@ export interface AuditRun { attempt: number; started_at: string; ended_at: strin
 export interface AttemptArtifact { name: string; size: number }
 export interface AttemptArtifacts { attempts: { attempt: number; status: string; artifacts: AttemptArtifact[] }[]; legacy: AttemptArtifact[] }
 export interface AdminJobQuality {
-  job_code: string; attempt: number | null; stage: string | null;
+  job_code: string; controlled_audit_history: boolean; attempt: number | null; stage: string | null;
   freshness_status: "NOT_REVIEWED" | "NOT_VERIFIED" | "INVALIDATED";
   invalidation_event_type: string | null;
   quality: {
@@ -31,6 +31,44 @@ export interface AdminJobQuality {
   } | null;
   coverage_status: "UNAVAILABLE" | string; coverage: Record<string, unknown> | null;
   coverage_limitation: string;
+  sanity: { status: string; checked_rows: number; input_digest: string | null; anomalies: { row_id: string | number; anomaly: string; [key: string]: unknown }[]; advisory: boolean };
+  stage_gates: { attempt: number; pass_no: number; checkpoint_version: number; snapshot_id: string; controller_status: string; candidate_release_status: string | null; blocking_checks: string[]; error_code: string | null; advanced: boolean; integrity_status: "VERIFIED" | "INVALID"; created_at: string }[];
+  gate_repair_status: "NOT_APPLICABLE" | "GATE_INVALID" | "CHECKPOINT_UNAVAILABLE" | "NOT_READY" | "CONTROLLER_CONTRACT" | "VALIDATOR_ERROR" | "UNMAPPED_BLOCKER";
+  gate_repair_attempts: number;
+  gate_repair_request_status: string | null;
+  report_source: { snapshot_digest: string; classification_digest: string | null; checkpoint_version: number; contract_version: number; ledger_record_counts: Record<string, number>; issue_final_status_counts: Record<string, number>; issue_candidate_count: number; pdf_mark_required_issue_count: number; classified_issue_count: number; unclassified_issue_count: number } | null;
+}
+export interface AdminCheckpointIssues {
+  snapshot_digest: string; classification_digest: string; total: number; offset: number; limit: number;
+  issues: { issue_id: string; claim: string; final_status: string; source_refs: { page_ids: string[]; sheet_ids: string[]; target_ids: string[] }; lineage_ids: string[]; severity: string | null; review_reason: string | null; classified: boolean }[];
+}
+export interface AdminAnnotationDraft {
+  draft_id: number; snapshot_digest: string; classification_digest: string; output_pdf_sha256: string;
+  annotation_qa_status: "PASS" | "FAIL" | "UNVERIFIED";
+  missing_active_issue_ids: string[]; review_counts: Record<string, number>; is_current: boolean;
+  marks: { mark_id: string; issue_id: string; lineage_ids: string[]; severity: string; pdf_page: number; note: string; review_status: "PASS" | "FAIL" | "UNVERIFIED" }[];
+}
+export interface AdminExcelReportReview {
+  draft_id: number; snapshot_digest: string; classification_digest: string;
+  annotation_pdf_sha256: string | null; workbook_sha256: string;
+  structural_qa: "PASS" | "FAIL"; latest_result: "PASS" | "FAIL" | "UNREVIEWED";
+  latest_reason: string | null; reviewer_user_id: number | null; revision_no: number | null;
+  is_current: boolean; reviewed_sections: string[];
+}
+export interface AdminReleaseSignoff {
+  signoff_id: number; revision_no: number; result: "APPROVE_FULL" | "APPROVE_PARTIAL" | "REJECT";
+  snapshot_digest: string; classification_digest: string; checkpoint_version: number;
+  pdf_draft_id: number; pdf_sha256: string; excel_draft_id: number; excel_sha256: string;
+  reviewed_unmarked_pdf: boolean;
+  unresolved_scope: string[]; is_current: boolean;
+}
+export interface AdminInventoryApproval {
+  job_code: string; source_digest: string; reviewer_user_id: number; reviewer_email: string | null;
+  approved_at: string; is_current: boolean; inventory: Record<string, unknown>;
+}
+export interface AdminJobInventory {
+  job_code: string; source_digest: string; scaffold: Record<string, unknown>;
+  approval: AdminInventoryApproval | null;
 }
 export interface AICapacity { available: boolean; ready: boolean | null; checked_at: string }
 export interface ChatMessage { id: number; role: "user" | "assistant"; content: string; status: "PENDING" | "COMPLETED" | "FAILED"; created_at: string }

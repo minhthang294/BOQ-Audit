@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from sqlalchemy import create_engine, event, func, inspect, select
+from sqlalchemy import create_engine, event, func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -240,5 +240,144 @@ def test_startup_migration_adds_quality_tables_idempotently(tmp_path, monkeypatc
             with pytest.raises(IntegrityError):
                 db.flush()
             db.rollback()
+    finally:
+        engine.dispose()
+
+
+def test_startup_migration_adds_dependency_invalidation_columns_to_legacy_revision_table(tmp_path, monkeypatch) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'batch-revisions.db'}")
+    try:
+        Base.metadata.create_all(engine)
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE audit_run_batch_revisions"))
+            connection.execute(text("""
+                CREATE TABLE audit_run_batch_revisions (
+                    id INTEGER PRIMARY KEY,
+                    run_id INTEGER NOT NULL REFERENCES audit_runs(id) ON DELETE CASCADE,
+                    base_result_id INTEGER NOT NULL REFERENCES audit_run_batch_results(id) ON DELETE CASCADE,
+                    gate_id INTEGER NOT NULL REFERENCES audit_run_stage_gates(id),
+                    revision_no INTEGER NOT NULL,
+                    blocker_fingerprint VARCHAR(64) NOT NULL,
+                    patch_json TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    records_json TEXT NOT NULL,
+                    patch_digest VARCHAR(64) NOT NULL,
+                    evidence_digest VARCHAR(64) NOT NULL,
+                    records_digest VARCHAR(64) NOT NULL,
+                    checkpoint_version INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    CONSTRAINT uq_audit_batch_revision_number UNIQUE (base_result_id, revision_no)
+                )
+            """))
+        monkeypatch.setattr(migrations, "engine", engine)
+        monkeypatch.setattr(migrations, "SessionLocal", sessionmaker(bind=engine))
+        migrations.migrate_and_recover()
+        migrations.migrate_and_recover()
+        columns = {column["name"]: column for column in inspect(engine).get_columns("audit_run_batch_revisions")}
+        assert columns["invalidated_check_ids_json"]["nullable"] is False
+        assert columns["invalidation_digest"]["nullable"] is True
+    finally:
+        engine.dispose()
+
+
+def test_startup_migration_adds_cross_attempt_provenance_columns_to_legacy_checkpoints(tmp_path, monkeypatch) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy-checkpoints.db'}")
+    try:
+        Base.metadata.create_all(engine)
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE audit_run_batch_ledgers"))
+            connection.execute(text("DROP TABLE audit_run_batch_revisions"))
+            connection.execute(text("DROP TABLE audit_run_batch_results"))
+            connection.execute(text("DROP TABLE audit_run_checkpoints"))
+            connection.execute(text("""
+                CREATE TABLE audit_run_checkpoints (
+                    run_id INTEGER PRIMARY KEY,
+                    approval_id INTEGER NOT NULL,
+                    source_digest VARCHAR(64) NOT NULL,
+                    skill_digest VARCHAR(64) NOT NULL,
+                    inventory_digest VARCHAR(64) NOT NULL,
+                    batch_plan_digest VARCHAR(64) NOT NULL,
+                    inventory_json TEXT NOT NULL,
+                    batch_plan_json TEXT NOT NULL,
+                    ledger_json TEXT NOT NULL,
+                    lesson_snapshot_json TEXT,
+                    lesson_snapshot_digest VARCHAR(64),
+                    gate_reports_json TEXT NOT NULL,
+                    pass_no INTEGER NOT NULL,
+                    active_batch_ids_json TEXT NOT NULL,
+                    status VARCHAR(16) NOT NULL,
+                    version INTEGER NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE audit_run_batch_results (
+                    id INTEGER PRIMARY KEY,
+                    run_id INTEGER NOT NULL,
+                    pass_no INTEGER NOT NULL,
+                    batch_key VARCHAR(64) NOT NULL,
+                    check_ids_json TEXT NOT NULL,
+                    source_files_json TEXT NOT NULL,
+                    patch_json TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    patch_digest VARCHAR(64) NOT NULL,
+                    evidence_digest VARCHAR(64) NOT NULL,
+                    checkpoint_version INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    CONSTRAINT uq_audit_run_batch_results_run_key UNIQUE (run_id, batch_key)
+                )
+            """))
+            connection.execute(text("""
+                INSERT INTO audit_run_checkpoints VALUES (
+                    17, 23, :source, :skill, :inventory_digest, :plan_digest,
+                    '{"expected_work_items":[]}', '{"1":[],"2":[],"3":[]}', '[]',
+                    '{"project_scope":"legacy"}', :lesson_digest, '{}', 1, '[]', 'READY', 4,
+                    '2026-10-29 00:00:00'
+                )
+            """), {
+                "source": "a" * 64, "skill": "b" * 64,
+                "inventory_digest": "c" * 64, "plan_digest": "d" * 64,
+                "lesson_digest": "e" * 64,
+            })
+            connection.execute(text("""
+                INSERT INTO audit_run_batch_results VALUES (
+                    31, 17, 1, :batch_key, '["legacy-check"]', '["drawing.pdf"]',
+                    :patch_json, '{"evidence":[]}', :patch_digest, :evidence_digest,
+                    4, '2026-10-29 00:00:00'
+                )
+            """), {
+                "batch_key": "f" * 64, "patch_digest": "1" * 64,
+                "evidence_digest": "2" * 64, "patch_json": '{"legacy":true}',
+            })
+
+        checkpoint_before = {column["name"] for column in inspect(engine).get_columns("audit_run_checkpoints")}
+        result_before = {column["name"] for column in inspect(engine).get_columns("audit_run_batch_results")}
+        assert "checker_digest" not in checkpoint_before
+        assert "derived_from_run_id" not in checkpoint_before | result_before
+
+        monkeypatch.setattr(migrations, "engine", engine)
+        monkeypatch.setattr(migrations, "SessionLocal", sessionmaker(bind=engine))
+        migrations.migrate_and_recover()
+        migrations.migrate_and_recover()
+
+        inspector = inspect(engine)
+        checkpoint_columns = {column["name"]: column for column in inspector.get_columns("audit_run_checkpoints")}
+        result_columns = {column["name"]: column for column in inspector.get_columns("audit_run_batch_results")}
+        assert checkpoint_columns["checker_digest"]["nullable"] is True
+        assert checkpoint_columns["derived_from_run_id"]["nullable"] is True
+        assert result_columns["derived_from_run_id"]["nullable"] is True
+        with engine.connect() as connection:
+            checkpoint = connection.execute(text("SELECT * FROM audit_run_checkpoints WHERE run_id=17")).mappings().one()
+            result = connection.execute(text("SELECT * FROM audit_run_batch_results WHERE id=31")).mappings().one()
+            assert checkpoint["inventory_json"] == '{"expected_work_items":[]}'
+            assert checkpoint["lesson_snapshot_json"] == '{"project_scope":"legacy"}'
+            assert checkpoint["version"] == 4
+            assert checkpoint["checker_digest"] is None
+            assert checkpoint["derived_from_run_id"] is None
+            assert result["patch_json"] == '{"legacy":true}'
+            assert result["checkpoint_version"] == 4
+            assert result["derived_from_run_id"] is None
+            assert connection.execute(text("SELECT COUNT(*) FROM audit_run_checkpoints")).scalar_one() == 1
+            assert connection.execute(text("SELECT COUNT(*) FROM audit_run_batch_results")).scalar_one() == 1
     finally:
         engine.dispose()

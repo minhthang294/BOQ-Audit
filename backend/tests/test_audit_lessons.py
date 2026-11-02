@@ -22,6 +22,7 @@ def _candidate(
 ):
     params = {
         "error_class": "MISSING_DIMENSION",
+        "applicability_check_kinds": ["DETAIL_RECONCILIATION"],
         "trigger_conditions": ["drawing has a dimension gap"],
         "required_checks": ["recompute the chain from the baseline"],
         "counterexamples": ["revision adds the missing dimension"],
@@ -299,6 +300,7 @@ def test_candidate_can_be_created_without_an_explicit_lesson_id(tmp_path):
     store = LessonStore(tmp_path / "lessons")
     created = store.create_candidate(
         error_class="MISSING_DIMENSION",
+        applicability_check_kinds=["DETAIL_RECONCILIATION"],
         trigger_conditions=["dimension gap"],
         required_checks=["recompute the chain"],
     )

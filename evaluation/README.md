@@ -1,6 +1,6 @@
 # Q10 evaluation schemas and synthetic fixtures
 
-Status: Q10a schema baseline with lead decisions applied. This directory contains schemas and synthetic fixtures only. It does **not** contain a scorer, a loader, runtime labels, pilot documents, customer data, or Kênh Xáng data.
+Status: Q10a schema baseline, Q10b deterministic scorer, and Q10c offline manifest/isolation validator. This directory contains schemas, synthetic fixtures, and evaluation code only. It does **not** contain human-labeled real cases, runtime labels, pilot documents, customer data, or Kênh Xáng data.
 
 All fixture filenames and SHA-256 values are synthetic labels. No source PDF, XLSX, or customer document is stored here.
 
@@ -12,7 +12,12 @@ evaluation/
 ├── schemas/
 │   ├── reference.schema.json
 │   ├── adjudication.schema.json
-│   └── run_record.schema.json
+│   ├── run_record.schema.json
+│   └── corpus_manifest.schema.json
+├── corpus_manifest.py
+├── test_corpus_manifest.py
+├── test_evaluate_audit_quality.py
+├── test_evaluate_audit_corpus.py
 └── synthetic/
     ├── reference_confirmed.synthetic.json
     ├── reference_clean.synthetic.json
@@ -23,6 +28,8 @@ evaluation/
     └── run_record_failed.synthetic.json
 ```
 
+`scripts/evaluate_audit_quality.py` reads one reference package, one adjudication, and one attempt record. Tests live in `evaluation/test_evaluate_audit_quality.py`.
+
 ## Schema versions
 
 | File | `schema_version` | Purpose |
@@ -31,7 +38,7 @@ evaluation/
 | `schemas/adjudication.schema.json` | `q10.adjudication/1` | Human mapping of reported findings to at most one reference, plus missed-reference FN entries and duplicate behavior. |
 | `schemas/run_record.schema.json` | `q10.run_record/1` | One retained attempt with pinned application/runtime/source/input/output digests, artifact hashes, and evaluation metrics. |
 
-The schemas use JSON Schema draft 2020-12 and are intentionally not yet wired into a scorer or loader.
+The schemas use JSON Schema draft 2020-12. The scorer applies its own identity, source-binding, and adjudication checks with the Python standard library; it does not claim full JSON Schema validation.
 
 ## Reference package rules
 
@@ -73,30 +80,60 @@ The fixtures cover the three Q10 groups: confirmed errors, independently checked
 | `reference_ambiguous.synthetic.json` | `AMBIGUOUS`; one unresolved geometry reference that must not be treated as clean or as a confirmed numerical error. |
 | `adjudication.synthetic.json` | TP, FP, duplicate, unresolved, out-of-scope, and one missed-reference FN. |
 | `run_record_completed.synthetic.json` | Completed attempt; `tp=1`, `fp=1`, `fn=1`, `unresolved=1`, `unscored=1`; precision `0.5`, recall `0.5`. |
-| `run_record_partial.synthetic.json` | Partial attempt retained; `tp=1`, `fp=0`, `fn=0`; precision `1.0`, recall `1.0`, explicitly not eligible for pass. |
+| `run_record_partial.synthetic.json` | Partial attempt retained; `tp=1`, `fp=0`, `fn=0`, `unscored=2`; precision `1.0`, recall `1.0`, explicitly not eligible for pass. One confirmed reference not reached by the partial attempt is unscored, not assumed clean. |
 | `run_record_failed.synthetic.json` | Failed attempt retained; zero denominators, `precision=null`, `recall=null`, explicit N/A notes, `output_digest=null`, no artifacts. |
 
 ## Self-check
 
-The Q10a check is minimal and stdlib-only in the repository's default Python (where `jsonschema` is not installed). It parses every JSON file, checks unique schema `$id` values and schema versions, checks fixture labels/`data_origin`, stable/unique IDs, duplicate and FN rules, denominator/metric consistency, top-level source/input/output digest presence, repeated synthetic hashes, and scans for banned real-data markers and binary source files. It was run inline; no self-check script is committed because Q10a is limited to README, schemas, and synthetic fixtures.
+Run the deterministic scorer on the synthetic completed case:
+
+```sh
+python scripts/evaluate_audit_quality.py \
+  --reference evaluation/synthetic/reference_confirmed.synthetic.json \
+  --adjudication evaluation/synthetic/adjudication.synthetic.json \
+  --run-record evaluation/synthetic/run_record_completed.synthetic.json
+python -m pip install -r backend/requirements-dev.txt
+python -m unittest evaluation.test_evaluate_audit_quality evaluation.test_corpus_manifest evaluation.test_evaluate_audit_corpus -v
+python scripts/evaluate_audit_corpus.py \
+  --manifest /secure/corpus/manifest.json \
+  --require-holdout \
+  --runtime-read-path /path/to/audit/runtime/source.pdf
+```
+
+The scorer requires source verification `MATCH`, current reference versions, and exact document ID/revision/hash agreement. A completed attempt must account for each adjudicated reference as TP or source-checked FN. Partial/failed attempts retain explicitly adjudicated findings; references not reached are counted as unscored, never as clean or FN. Duplicate findings do not increase TP/FP. A zero denominator yields `null` plus an N/A note. `scoring_complete` means only that this completed attempt has no unresolved or unscored reference; it does not determine holdout eligibility or an aggregate pilot pass.
+
+The committed evaluation suite uses `jsonschema` to check all four Draft 2020-12 schema definitions, validate all seven synthetic fixtures against their matching schemas, and validate the generated corpus manifest. It also checks unique schema `$id`s, filename/version alignment, synthetic origins, and a negative required-field mutation. The scorer and manifest tests separately cover identity, source binding, adjudication, path, and holdout-grant invariants.
 
 Last run result:
 
 ```text
-SELF-CHECK PASS
-schemas=3 fixtures=7 errors=0
+Ran 41 tests
+OK
 ```
 
-An optional full Draft 2020-12 validation was also run with a locally installed `jsonschema` validator (Python 3.12): all 3 schemas passed `check_schema`, and all 7 fixtures validated. Twelve negative mutations were rejected, including clean-with-source-mismatch, duplicate-counted-as-TP, TP-without-reference, zero-denominator-with-numeric-metric, missing root ID, missed-reference-not-FN, missing skill/source digest, and completed/partial attempts without an output digest. That validator is not part of the repository self-check or the project test environment.
+The CI test dependency pins `jsonschema[format]` so format constraints such as `date-time` are checked as well as structural constraints.
+
+## Q10c manifest and holdout isolation
+
+`schemas/corpus_manifest.schema.json` describes metadata for externally stored reference, adjudication, and run-record files. `evaluation/corpus_manifest.py` validates the manifest and each referenced reference/adjudication/run-record file against their Draft 2020-12 schemas, validates cross-file identities by running the deterministic scorer, rejects paths escaping the corpus root or direct file symlinks, and rejects source-family, audit-package, or reference-package IDs appearing in both DEVELOPMENT and HOLDOUT. It also rejects duplicate adjudication/run-record bytes and duplicate run-record/attempt IDs across cases; one attempt cannot be counted twice, even if its record is reserialized with different bytes. Source-family IDs must represent original-document lineage across revisions; the split is assigned by a human curator and is never inferred from model output.
+
+Each manifest package pins the SHA-256 of its reference, adjudication, and run-record bytes. The evaluator rejects stale digests and includes the manifest and package digests in its output so metrics can be tied back to the exact label set and attempt record.
+
+The manifest also requires a curator ID, curation timestamp, positive manifest revision, and change reason. These fields document split ownership and edits; they are audit metadata, not a cryptographic signature or proof of curator authorization. Keep the manifest in access-controlled storage and retain its revision history.
+
+The offline evaluator calls `assert_holdout_not_granted(manifest_path, runtime_read_paths)` before scoring. It rejects exact or nested directory grants that expose holdout reference/adjudication/run-record files, including symlink and hard-link aliases; it also rejects a symlinked manifest. The scorer rejects missing/cyclic reference roots and treats valid split child references as separate labels; malformed deeply nested JSON becomes a typed evaluation error. This guard is not wired into the audit worker. The worker sandbox grants only explicit source/controller files, and `:root` is denied, but a live integration test must verify the actual Codex filesystem policy before claiming holdout isolation. Keep the manifest and all referenced human labels outside Git and outside audit workspaces/runtime mounts. Do not place holdout labels beside source PDFs in an audit job workspace.
+
+`scripts/evaluate_audit_corpus.py` validates the manifest and labels, checks each supplied runtime read path against holdout files, scores every package, and emits per-case results with separate DEVELOPMENT and HOLDOUT aggregate metrics. `--require-holdout` requires both partitions. Aggregates are descriptive only; they do not decide pilot eligibility.
+
+This scaffolding does not create or approve real labels. A reviewer must verify source bytes/revisions and adjudicate each case before a corpus manifest is accepted.
 
 ## NOT_RUN and limitations
 
-- Scorer, loader, runtime labels, holdout labels, and pilot-document updates: NOT_RUN and out of Q10a scope.
-- Backend pytest: NOT_RUN, as required.
-- Python 3.12 CI compatibility: NOT_RUN; the repository stdlib check used Python 3.14, while the optional schema validation used a separate Python 3.12 environment.
-- Full validation with the project's declared test environment: NOT_RUN because `/tmp/boq-excel-testvenv-20261023` is not present in this checkout.
+- Real labeled corpus, holdout labels, pilot-document updates, and live Codex isolation: NOT_RUN; require reviewer-approved data and a runtime integration/canary.
+- Historical Python 3.12 run before the latest Q10 follow-up: backend suite passed 444 tests (1 Starlette deprecation warning, 69.14s, outside sandbox); focused evaluation/corpus suite passed 21 tests after manifest-schema and grant-alias guards. The managed sandbox full-suite run had an AnyIO stall and was not used for that passing result. Current focused Q10 count is recorded above.
+- These results do not include human-labeled corpus evaluation or a live holdout runner.
 - Fixture source files and artifact files are not present; only synthetic filenames and hashes are recorded.
-- These schemas are v1; Q10b/evaluator wiring is not implemented here.
+- These schemas are v1; live holdout evaluation through the audit worker/runtime is not implemented here.
 
 ## Lead decisions (accepted)
 

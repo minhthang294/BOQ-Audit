@@ -140,6 +140,14 @@ class LessonStore:
                 found.append((int(match.group(1)), path))
         return sorted(found)
 
+    def lesson_ids(self) -> list[str]:
+        if not self.root.is_dir():
+            return []
+        return sorted(
+            path.name for path in self.root.iterdir()
+            if not path.is_symlink() and path.is_dir() and LESSON_ID_RE.fullmatch(path.name)
+        )
+
     def _event_paths(self, lesson_id: str, version: int) -> list[tuple[int, Path]]:
         directory = self._lesson_dir(lesson_id) / "events" / f"v{version:04d}"
         if not directory.is_dir():
@@ -308,6 +316,8 @@ class LessonStore:
         self,
         *,
         error_class: str,
+        applicability_check_kinds: Iterable[str],
+        applicability_target_ids: Iterable[str] | None = None,
         trigger_conditions: Iterable[str],
         required_checks: Iterable[str],
         counterexamples: Iterable[str] | None = None,
@@ -357,6 +367,8 @@ class LessonStore:
             "created_at": _utcnow(),
             "supersedes": supersedes,
             "error_class": _text(error_class, "error_class"),
+            "applicability_check_kinds": _text_list(applicability_check_kinds, "applicability_check_kinds"),
+            "applicability_target_ids": _text_list(applicability_target_ids, "applicability_target_ids"),
             "trigger_conditions": _text_list(trigger_conditions, "trigger_conditions", required=True),
             "required_checks": _text_list(required_checks, "required_checks", required=True),
             "counterexamples": _text_list(counterexamples, "counterexamples"),
@@ -365,6 +377,8 @@ class LessonStore:
             "project_scope": _text(project_scope, "project_scope"),
             "visibility_scope": _text(visibility_scope, "visibility_scope"),
         }
+        if not content["applicability_check_kinds"] and not content["applicability_target_ids"]:
+            raise LessonStoreError("at least one exact applicability check kind or target ID is required")
         path = self._lesson_dir(lesson_id) / "versions" / f"v{version:04d}.json"
         _atomic_write_once(path, content)
         self._append_event(

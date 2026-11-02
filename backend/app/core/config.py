@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     excel_explain_rate_limit: int = Field(default=20, ge=1, le=100)
     excel_explain_rate_window_seconds: int = Field(default=3600, ge=60, le=86400)
     excel_explain_retention_hours: int = Field(default=48, ge=1, le=720)
+    audit_quality_reviewer_emails: str = Field(default="", validation_alias=AliasChoices("AUDIT_QUALITY_REVIEWER_EMAILS"))
+    audit_engineer_signoff_emails: str = Field(default="", validation_alias=AliasChoices("AUDIT_ENGINEER_SIGNOFF_EMAILS"))
+    audit_lesson_reviewer_emails: str = Field(default="", validation_alias=AliasChoices("AUDIT_LESSON_REVIEWER_EMAILS"))
+    audit_checkpoint_worker_enabled: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -85,6 +89,18 @@ class Settings(BaseSettings):
         if not self.cookie_secure:
             raise ValueError("COOKIE_SECURE must be true in production")
         return self
+
+    @property
+    def audit_quality_reviewer_email_set(self) -> set[str]:
+        return {email.strip().lower() for email in self.audit_quality_reviewer_emails.split(",") if email.strip()}
+
+    @property
+    def audit_engineer_signoff_email_set(self) -> set[str]:
+        return {email.strip().lower() for email in self.audit_engineer_signoff_emails.split(",") if email.strip()}
+
+    @property
+    def audit_lesson_reviewer_email_set(self) -> set[str]:
+        return {email.strip().lower() for email in self.audit_lesson_reviewer_emails.split(",") if email.strip()}
 
     @property
     def jobs_dir(self) -> Path:

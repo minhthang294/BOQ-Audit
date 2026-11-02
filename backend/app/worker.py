@@ -10,9 +10,13 @@ from pathlib import Path
 from threading import Event
 from uuid import uuid4
 
+from sqlalchemy import select, text
+
 from app.core.config import get_settings
+from app.core.database import SessionLocal
 from app.core.migrations import recover_interrupted_runs
-from app.services.audit_runner import claim_job, run_audit_job
+from app.models.entities import AuditRun, AuditRunCheckpoint, AuditRunGateRepairRequest, Job, JobStatus, utcnow
+from app.services.audit_runner import claim_job, run_audit_job, run_checkpoint_repair_request
 
 logger = logging.getLogger("boq-audit.worker")
 STOP = Event()
@@ -39,6 +43,46 @@ def _health(heartbeat_path: Path, lock_path: Path) -> int:
         return 0
     except (OSError, ValueError, KeyError, TypeError):
         return 1
+
+
+def _next_checkpoint_run() -> tuple[int, int] | None:
+    if not get_settings().audit_checkpoint_worker_enabled:
+        return None
+    with SessionLocal() as db:
+        jobs = db.scalars(select(Job).where(Job.status == JobStatus.PROCESSING).order_by(Job.created_at, Job.id))
+        for job in jobs:
+            latest = max(job.audit_runs, key=lambda run: run.attempt, default=None)
+            checkpoint = db.get(AuditRunCheckpoint, latest.id) if latest and latest.status == "RUNNING" else None
+            if checkpoint is not None and checkpoint.status in {"READY", "RUNNING"}:
+                return job.id, latest.id
+    return None
+
+
+def _claim_repair_request() -> int | None:
+    if not get_settings().audit_checkpoint_worker_enabled:
+        return None
+    with SessionLocal() as db:
+        db.execute(text("BEGIN IMMEDIATE"))
+        requests = db.scalars(select(AuditRunGateRepairRequest).where(AuditRunGateRepairRequest.status == "REQUESTED").order_by(AuditRunGateRepairRequest.id)).all()
+        for request in requests:
+            run = db.get(AuditRun, request.run_id)
+            latest = db.scalar(select(AuditRun.id).where(AuditRun.job_id == run.job_id).order_by(AuditRun.attempt.desc()).limit(1)) if run else None
+            if run is None or latest != run.id or run.status != JobStatus.WAITING_FOR_INFO.value or run.job.status != JobStatus.WAITING_FOR_INFO:
+                request.status = "FAILED"
+                request.error_code = "STALE_JOB"
+                request.ended_at = utcnow()
+                continue
+            request.status = "RUNNING"
+            request.started_at = utcnow()
+            run.status = "RUNNING"
+            run.ended_at = None
+            run.duration_seconds = None
+            run.job.status = JobStatus.PROCESSING
+            run.job.admin_notes = "Đang sửa batch theo blocker stage gate trên cùng lượt audit."
+            db.commit()
+            return request.id
+        db.commit()
+    return None
 
 
 def main() -> int:
@@ -72,7 +116,11 @@ def main() -> int:
         recover_interrupted_runs()
         while not STOP.is_set():
             heartbeat()
-            claim = claim_job()
+            repair_id = _claim_repair_request()
+            if repair_id is not None:
+                run_checkpoint_repair_request(repair_id, stop=STOP, heartbeat=heartbeat)
+                continue
+            claim = _next_checkpoint_run() or claim_job()
             if claim:
                 run_audit_job(*claim, stop=STOP, heartbeat=heartbeat)
             else:

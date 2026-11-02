@@ -1,0 +1,446 @@
+{
+  "contract_version": 3,
+  "record_types": {
+    "page_ledger": {
+      "id_field": "page_id",
+      "passes": [
+        1
+      ],
+      "required_fields": [
+        "source_pdf",
+        "pdf_page",
+        "status"
+      ],
+      "field_types": {
+        "page_id": "string",
+        "source_pdf": "string",
+        "pdf_page": "integer",
+        "printed_sheet": "string|null",
+        "drawing_no": "string|null",
+        "revision": "string|null",
+        "page_type": "string|null",
+        "has_quantity_table": "boolean",
+        "status": "string",
+        "notes": "string|null",
+        "evidence_anchors": "string[]"
+      },
+      "enum_fields": {
+        "status": "review_status"
+      }
+    },
+    "detail_rows": {
+      "id_field": "row_id",
+      "passes": [
+        1
+      ],
+      "required_fields": [
+        "source_anchor",
+        "spec_status",
+        "qty_status",
+        "status"
+      ],
+      "field_types": {
+        "row_id": "string",
+        "section_id": "string|null",
+        "stt": "string|integer",
+        "source_anchor": "string",
+        "spec_status": "string",
+        "qty_status": "string",
+        "status": "string",
+        "unit": "string|null",
+        "reported_quantity": "number|null",
+        "sequence_checked": "boolean",
+        "integer_sanity_checked": "boolean"
+      },
+      "enum_fields": {
+        "status": "review_status",
+        "spec_status": "review_status",
+        "qty_status": "review_status"
+      }
+    },
+    "summary_lineage": {
+      "id_field": "summary_row_id",
+      "passes": [
+        1
+      ],
+      "required_fields": [
+        "source_rows",
+        "reported_total",
+        "status",
+        "source_anchor"
+      ],
+      "field_types": {
+        "summary_row_id": "string",
+        "summary_page": "integer|null",
+        "summary_section": "string|null",
+        "name_spec": "string",
+        "unit": "string|null",
+        "source_rows": "string[]",
+        "aggregation_rule": "string|null",
+        "reported_total": "number|null",
+        "audited_total": "number|null",
+        "delta": "number|null",
+        "status": "string",
+        "name_spec_match": "boolean|null",
+        "unit_match": "boolean|null",
+        "scope_match": "boolean|null",
+        "discrete_integer_sanity": "boolean|null",
+        "source_anchor": "string",
+        "zero_source_explanation": "string|null"
+      },
+      "enum_fields": {
+        "status": "review_status"
+      }
+    },
+    "calculation_ledger": {
+      "id_field": "calc_id",
+      "passes": [
+        1
+      ],
+      "required_fields": [
+        "formula",
+        "inputs",
+        "raw_result",
+        "unit",
+        "status",
+        "source_anchors",
+        "calculation_class",
+        "pass1_result"
+      ],
+      "field_types": {
+        "calc_id": "string",
+        "object_id": "string|null",
+        "formula": "string",
+        "inputs": "object[]",
+        "source_anchors": "string[]",
+        "raw_result": "number|null",
+        "rounded_result": "number|null",
+        "unit": "string",
+        "rounding_rule": "string|null",
+        "pass1_result": "number|string|null",
+        "pass2_result": "number|string|null",
+        "pass3_result": "number|string|null",
+        "status": "string",
+        "calculation_class": "string|null",
+        "assumption_ids": "string[]",
+        "target_value_seen_before_calc": "boolean|null"
+      },
+      "enum_fields": {
+        "status": "review_status",
+        "calculation_class": "calculation_class"
+      },
+      "prefixes": {
+        "calc_id": "CALC-"
+      }
+    },
+    "assumption_ledger": {
+      "id_field": "assumption_id",
+      "passes": [
+        1
+      ],
+      "required_fields": [
+        "variable",
+        "evidence_class",
+        "status"
+      ],
+      "field_types": {
+        "assumption_id": "string",
+        "object_id": "string|null",
+        "variable": "string",
+        "value": "any",
+        "unit": "string|null",
+        "evidence_class": "string",
+        "source_anchor": "string|null",
+        "rationale": "string|null",
+        "sensitivity": "string|number|null",
+        "affects_qty": "boolean",
+        "status": "string",
+        "closure_evidence": "string|null"
+      },
+      "enum_fields": {
+        "status": "review_status",
+        "evidence_class": "evidence_class"
+      },
+      "prefixes": {
+        "assumption_id": "ASM-"
+      }
+    },
+    "issue_candidates": {
+      "id_field": "candidate_id",
+      "passes": [
+        1,
+        2
+      ],
+      "required_fields": [
+        "claim",
+        "evidence_ids"
+      ],
+      "field_types": {
+        "candidate_id": "string",
+        "claim": "string",
+        "evidence_ids": "string[]"
+      }
+    },
+    "regression_checks": {
+      "id_field": "case_id",
+      "passes": [
+        1
+      ],
+      "required_fields": [
+        "status",
+        "evidence_anchors",
+        "reason"
+      ],
+      "field_types": {
+        "case_id": "string",
+        "title": "string|null",
+        "status": "string",
+        "evidence_anchors": "string[]",
+        "reason": "string",
+        "target_ids": "string[]",
+        "memory_source": "string|null"
+      },
+      "enum_fields": {
+        "status": "regression_status"
+      }
+    },
+    "physical_instance_ledger": {
+      "id_field": "instance_id",
+      "passes": [
+        1
+      ],
+      "required_fields": [
+        "object_type",
+        "view_evidence",
+        "status"
+      ],
+      "field_types": {
+        "instance_id": "string",
+        "object_type": "string",
+        "station": "string|null",
+        "side": "string|null",
+        "span_support": "string|null",
+        "view_evidence": "string[]",
+        "status": "string"
+      },
+      "enum_fields": {
+        "status": "review_status"
+      }
+    },
+    "run_metadata": {
+      "id_field": "metadata_id",
+      "passes": [
+        1
+      ],
+      "required_fields": [
+        "stage",
+        "references_read",
+        "memory_cases_consulted",
+        "completed_checks"
+      ],
+      "field_types": {
+        "metadata_id": "string",
+        "stage": "string",
+        "references_read": "string[]",
+        "memory_cases_consulted": "string[]",
+        "completed_checks": "object[]",
+        "no_detail_tables_reason": "string",
+        "no_summary_tables_reason": "string",
+        "no_sequence_sections_reason": "string",
+        "no_discrete_rows_reason": "string"
+      },
+      "enum_fields": {
+        "stage": "run_stage"
+      },
+      "nested_object_arrays": {
+        "completed_checks": {
+          "required_fields": [
+            "flag",
+            "evidence_ids",
+            "reason"
+          ],
+          "field_types": {
+            "flag": "string",
+            "evidence_ids": "string[]",
+            "reason": "string"
+          },
+          "enum_fields": {
+            "flag": "completed_check_flag"
+          }
+        }
+      }
+    },
+    "pass2_review": {
+      "id_field": "review_id",
+      "passes": [
+        2
+      ],
+      "required_fields": [
+        "pass_no",
+        "target",
+        "result",
+        "method",
+        "evidence"
+      ],
+      "field_types": {
+        "pass_no": "integer",
+        "review_id": "string",
+        "target": "string",
+        "method": "string",
+        "evidence": "string[]",
+        "calc_id": "string|null",
+        "prior_status": "string|null",
+        "result": "string",
+        "final_issue_state": "string|null",
+        "page_ids": "string[]",
+        "case_ids": "string[]",
+        "target_ids": "string[]",
+        "issue_ids": "string[]",
+        "sheet_ids": "string[]"
+      },
+      "enum_fields": {
+        "pass_no": "pass2_no"
+      },
+      "unique_items": [
+        "page_ids",
+        "sheet_ids",
+        "case_ids",
+        "target_ids",
+        "issue_ids"
+      ],
+      "min_items": {
+        "page_ids": 1,
+        "sheet_ids": 1
+      }
+    },
+    "pass3_review": {
+      "id_field": "review_id",
+      "passes": [
+        3
+      ],
+      "required_fields": [
+        "pass_no",
+        "target",
+        "result",
+        "method",
+        "evidence"
+      ],
+      "field_types": {
+        "pass_no": "integer",
+        "review_id": "string",
+        "target": "string",
+        "method": "string",
+        "evidence": "string[]",
+        "calc_id": "string|null",
+        "prior_status": "string|null",
+        "result": "string",
+        "final_issue_state": "string|null",
+        "page_ids": "string[]",
+        "case_ids": "string[]",
+        "target_ids": "string[]",
+        "issue_ids": "string[]",
+        "sheet_ids": "string[]"
+      },
+      "enum_fields": {
+        "pass_no": "pass3_no"
+      },
+      "unique_items": [
+        "page_ids",
+        "sheet_ids",
+        "case_ids",
+        "target_ids",
+        "issue_ids"
+      ],
+      "min_items": {
+        "page_ids": 1,
+        "sheet_ids": 1
+      }
+    },
+    "issues": {
+      "id_field": "issue_id",
+      "passes": [
+        3
+      ],
+      "required_fields": [
+        "claim",
+        "status",
+        "final_status"
+      ],
+      "field_types": {
+        "issue_id": "string",
+        "root_issue_id": "string|null",
+        "claim": "string",
+        "evidence": "string[]",
+        "calc_ids": "string[]",
+        "pass_found": "integer",
+        "final_status": "string",
+        "status": "string",
+        "candidate_ids": "string[]",
+        "object_id": "string|null"
+      },
+      "enum_fields": {
+        "status": "review_status",
+        "final_status": "issue_final_status"
+      },
+      "numeric_bounds": {
+        "pass_found": {
+          "minimum": 1,
+          "maximum": 3
+        }
+      }
+    }
+  },
+  "enums": {
+    "review_status": [
+      "VERIFIED",
+      "CONFIRMED_ERROR",
+      "UNRESOLVED",
+      "INCONSISTENT",
+      "NOT_APPLICABLE",
+      "CLOSED_WITH_EXPLANATION"
+    ],
+    "issue_final_status": [
+      "CONFIRMED_ERROR",
+      "UNRESOLVED",
+      "FALSE_POSITIVE",
+      "CLOSED_WITH_EXPLANATION",
+      "INCONSISTENT"
+    ],
+    "calculation_class": [
+      "INDEPENDENT_TAKEOFF",
+      "RECONCILIATION_CHECK",
+      "SENSITIVITY_CHECK"
+    ],
+    "evidence_class": [
+      "OBSERVED",
+      "DERIVED",
+      "USER_CLAIM",
+      "MODEL_ASSUMPTION",
+      "RECONCILIATION"
+    ],
+    "regression_status": [
+      "CHECKED",
+      "NOT_APPLICABLE",
+      "UNRESOLVED"
+    ],
+    "pass2_no": [
+      2
+    ],
+    "pass3_no": [
+      3
+    ],
+    "run_stage": [
+      "pass1"
+    ],
+    "completed_check_flag": [
+      "tables_inventory_verified",
+      "summary_reconciliation_complete",
+      "drawing_boq_orphan_check_complete",
+      "paired_geometry_checks_complete",
+      "assumption_ledger_complete",
+      "reconciliation_labeled_complete",
+      "scope_overlap_check_complete",
+      "paired_side_instance_check_complete"
+    ]
+  }
+}

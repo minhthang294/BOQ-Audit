@@ -251,3 +251,224 @@ class AuditQualityReviewEvent(Base):
     actor_id: Mapped[str] = mapped_column(String(64))
     reason: Mapped[str] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditInventoryApproval(Base):
+    __tablename__ = "audit_inventory_approvals"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    source_digest: Mapped[str] = mapped_column(String(64), index=True)
+    inventory_json: Mapped[str] = mapped_column(Text)
+
+
+class AuditRunCheckpoint(Base):
+    __tablename__ = "audit_run_checkpoints"
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), primary_key=True)
+    contract_version: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
+    approval_id: Mapped[int] = mapped_column(ForeignKey("audit_inventory_approvals.id", ondelete="CASCADE"), index=True)
+    source_digest: Mapped[str] = mapped_column(String(64))
+    skill_digest: Mapped[str] = mapped_column(String(64))
+    inventory_digest: Mapped[str] = mapped_column(String(64))
+    batch_plan_digest: Mapped[str] = mapped_column(String(64))
+    inventory_json: Mapped[str] = mapped_column(Text)
+    batch_plan_json: Mapped[str] = mapped_column(Text)
+    ledger_json: Mapped[str] = mapped_column(Text)
+    lesson_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lesson_snapshot_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    checker_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    derived_from_run_id: Mapped[int | None] = mapped_column(ForeignKey("audit_runs.id"), nullable=True)
+    gate_reports_json: Mapped[str] = mapped_column(Text, default="{}")
+    pass_no: Mapped[int] = mapped_column(Integer, default=1)
+    active_batch_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String(16), default="READY")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AuditRunStageGate(Base):
+    __tablename__ = "audit_run_stage_gates"
+    __table_args__ = (UniqueConstraint("run_id", "snapshot_id", "stage", name="uq_audit_stage_gate_snapshot"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    pass_no: Mapped[int] = mapped_column(Integer)
+    checkpoint_version: Mapped[int] = mapped_column(Integer)
+    snapshot_id: Mapped[str] = mapped_column(String(64))
+    stage: Mapped[str] = mapped_column(String(16))
+    receipt_json: Mapped[str] = mapped_column(Text)
+    error_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    receipt_digest: Mapped[str] = mapped_column(String(64))
+    advanced: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditRunBatchResult(Base):
+    __tablename__ = "audit_run_batch_results"
+    __table_args__ = (UniqueConstraint("run_id", "batch_key", name="uq_audit_run_batch_results_run_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    pass_no: Mapped[int] = mapped_column(Integer)
+    batch_key: Mapped[str] = mapped_column(String(64))
+    check_ids_json: Mapped[str] = mapped_column(Text)
+    source_files_json: Mapped[str] = mapped_column(Text)
+    patch_json: Mapped[str] = mapped_column(Text)
+    evidence_json: Mapped[str] = mapped_column(Text)
+    patch_digest: Mapped[str] = mapped_column(String(64))
+    evidence_digest: Mapped[str] = mapped_column(String(64))
+    checkpoint_version: Mapped[int] = mapped_column(Integer)
+    derived_from_run_id: Mapped[int | None] = mapped_column(ForeignKey("audit_runs.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditRunBatchLedger(Base):
+    __tablename__ = "audit_run_batch_ledgers"
+    __table_args__ = (UniqueConstraint("batch_result_id", name="uq_audit_batch_ledger_batch"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    batch_result_id: Mapped[int] = mapped_column(ForeignKey("audit_run_batch_results.id", ondelete="CASCADE"))
+    records_json: Mapped[str] = mapped_column(Text)
+    records_digest: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditRunBatchRevision(Base):
+    __tablename__ = "audit_run_batch_revisions"
+    __table_args__ = (UniqueConstraint("base_result_id", "revision_no", name="uq_audit_batch_revision_number"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    base_result_id: Mapped[int] = mapped_column(ForeignKey("audit_run_batch_results.id", ondelete="CASCADE"), index=True)
+    gate_id: Mapped[int] = mapped_column(ForeignKey("audit_run_stage_gates.id"), index=True)
+    revision_no: Mapped[int] = mapped_column(Integer)
+    blocker_fingerprint: Mapped[str] = mapped_column(String(64))
+    patch_json: Mapped[str] = mapped_column(Text)
+    evidence_json: Mapped[str] = mapped_column(Text)
+    records_json: Mapped[str] = mapped_column(Text)
+    patch_digest: Mapped[str] = mapped_column(String(64))
+    evidence_digest: Mapped[str] = mapped_column(String(64))
+    records_digest: Mapped[str] = mapped_column(String(64))
+    invalidated_check_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    invalidation_digest: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    checkpoint_version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditRunGateRepairRequest(Base):
+    __tablename__ = "audit_run_gate_repair_requests"
+    __table_args__ = (UniqueConstraint("base_result_id", "attempt_no", name="uq_audit_gate_repair_attempt"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    base_result_id: Mapped[int] = mapped_column(ForeignKey("audit_run_batch_results.id", ondelete="CASCADE"), index=True)
+    gate_id: Mapped[int] = mapped_column(ForeignKey("audit_run_stage_gates.id"), index=True)
+    batch_ids_json: Mapped[str] = mapped_column(Text)
+    source_digest: Mapped[str] = mapped_column(String(64))
+    skill_digest: Mapped[str] = mapped_column(String(64))
+    checkpoint_version: Mapped[int] = mapped_column(Integer)
+    attempt_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="REQUESTED")
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuditIssueClassification(Base):
+    __tablename__ = "audit_issue_classifications"
+    __table_args__ = (UniqueConstraint("run_id", "snapshot_digest", "issue_id", "revision_no", name="uq_audit_issue_classification_revision"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    issue_id: Mapped[str] = mapped_column(String(160))
+    revision_no: Mapped[int] = mapped_column(Integer)
+    final_status: Mapped[str] = mapped_column(String(32))
+    severity: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditAnnotationDraft(Base):
+    __tablename__ = "audit_annotation_drafts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    classification_digest: Mapped[str] = mapped_column(String(64))
+    source_pdf_sha256: Mapped[str] = mapped_column(String(64))
+    output_pdf_sha256: Mapped[str] = mapped_column(String(64))
+    file_path: Mapped[str] = mapped_column(String(600))
+    marks_json: Mapped[str] = mapped_column(Text)
+    qa_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditAnnotationReviewEvent(Base):
+    __tablename__ = "audit_annotation_review_events"
+    __table_args__ = (UniqueConstraint("draft_id", "mark_id", "revision_no", name="uq_audit_annotation_mark_review_revision"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    draft_id: Mapped[int] = mapped_column(ForeignKey("audit_annotation_drafts.id", ondelete="CASCADE"), index=True)
+    mark_id: Mapped[str] = mapped_column(String(160))
+    revision_no: Mapped[int] = mapped_column(Integer)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    result: Mapped[str] = mapped_column(String(8))
+    reason: Mapped[str] = mapped_column(Text)
+    output_pdf_sha256: Mapped[str] = mapped_column(String(64))
+    target_crop_sha256: Mapped[str] = mapped_column(String(64))
+    note_crop_sha256: Mapped[str] = mapped_column(String(64))
+    page_render_sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditExcelReportDraft(Base):
+    __tablename__ = "audit_excel_report_drafts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    classification_digest: Mapped[str] = mapped_column(String(64))
+    annotation_pdf_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    workbook_sha256: Mapped[str] = mapped_column(String(64))
+    file_path: Mapped[str] = mapped_column(String(600))
+    qa_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditExcelReportReviewEvent(Base):
+    __tablename__ = "audit_excel_report_review_events"
+    __table_args__ = (UniqueConstraint("draft_id", "revision_no", name="uq_audit_excel_report_review_revision"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    draft_id: Mapped[int] = mapped_column(ForeignKey("audit_excel_report_drafts.id", ondelete="CASCADE"), index=True)
+    revision_no: Mapped[int] = mapped_column(Integer)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    result: Mapped[str] = mapped_column(String(8))
+    reason: Mapped[str] = mapped_column(Text)
+    reviewed_sections_json: Mapped[str] = mapped_column(Text)
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    classification_digest: Mapped[str] = mapped_column(String(64))
+    annotation_pdf_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    workbook_sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditReleaseSignoffEvent(Base):
+    __tablename__ = "audit_release_signoff_events"
+    __table_args__ = (UniqueConstraint("run_id", "revision_no", name="uq_audit_release_signoff_revision"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"), index=True)
+    revision_no: Mapped[int] = mapped_column(Integer)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    result: Mapped[str] = mapped_column(String(24))
+    reason: Mapped[str] = mapped_column(Text)
+    accepted_partial: Mapped[bool] = mapped_column(Boolean, default=False)
+    reviewed_unmarked_pdf: Mapped[bool] = mapped_column(Boolean, default=False)
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    classification_digest: Mapped[str] = mapped_column(String(64))
+    checkpoint_version: Mapped[int] = mapped_column(Integer)
+    approval_id: Mapped[int] = mapped_column(ForeignKey("audit_inventory_approvals.id"))
+    pdf_draft_id: Mapped[int] = mapped_column(ForeignKey("audit_annotation_drafts.id"))
+    pdf_sha256: Mapped[str] = mapped_column(String(64))
+    excel_draft_id: Mapped[int] = mapped_column(ForeignKey("audit_excel_report_drafts.id"))
+    excel_review_event_id: Mapped[int] = mapped_column(ForeignKey("audit_excel_report_review_events.id"))
+    excel_sha256: Mapped[str] = mapped_column(String(64))
+    unresolved_scope_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -39,7 +39,7 @@ DIAGNOSTIC_LIMIT_BYTES = 64 * 1024
 VALIDATOR_RELATIVE_PATH = "scripts/validate_run.py"
 SKILL_MANIFEST_ALGORITHM = "sha256(canonical JSON path/hash list)"
 # Contract-pinned v6.4 bundle digest. Never derive this from the manifest under test.
-TRUSTED_SKILL_DIGEST = "17c14f63f78c2670428e233c4bfc56623473d1d644cf38d003db477d80c14a2c"
+TRUSTED_SKILL_DIGEST = "8fe1a2f9cb2b2907036bf2b466ff3bc264771b7dbd989232fc27f86ce6e6baa5"
 _MAX_SKILL_MANIFEST_BYTES = 4 * 1024 * 1024
 _MAX_JSON_BYTES = 16 * 1024 * 1024
 
@@ -47,6 +47,7 @@ STAGE_COMPLETE_STATUS = "METADATA_STAGE_COMPLETE"
 RELEASE_READY_STATUS = "READY_FOR_ENGINEER_REVIEW"
 RELEASE_PARTIAL_STATUS = "PARTIAL_WITH_OPEN_ITEMS_REVIEW_REQUIRED"
 BLOCKED_STATUS = "BLOCKED"
+_CONTROLLER_PREFLIGHT_ERRORS = frozenset({"STAGE_SOURCE_BINDING", "STAGE_LEDGER_REFERENCE"})
 
 _ALLOWED_EXIT_STATUSES: dict[str, dict[int, frozenset[str]]] = {
     "pass1": {0: frozenset({STAGE_COMPLETE_STATUS}), 2: frozenset({BLOCKED_STATUS})},
@@ -1445,3 +1446,27 @@ def validate_snapshot(
         error_code=getattr(error, "code", None) if error is not None else None,
         error_message=str(error) if error is not None else None,
     )
+
+
+def controller_error_result(
+    *, snapshot: Snapshot, run_id: int, stage: str, source_digest: str,
+    error_code: str,
+) -> ValidationResult:
+    """Persist a controller preflight failure against its immutable diagnostic snapshot."""
+    stage = _validate_stage(stage)
+    run_id = _validate_run_id(run_id)
+    source_digest = _require_sha256(source_digest, "source_digest")
+    if error_code not in _CONTROLLER_PREFLIGHT_ERRORS:
+        raise ValueError("unsupported controller preflight error")
+    _verify_snapshot(snapshot, stage)
+    _, receipt_path = _receipt_location(snapshot, stage)
+    if os.path.lexists(receipt_path):
+        raise ReceiptExistsError(f"receipt already exists: {receipt_path}")
+    receipt = ValidatorReceipt(
+        schema_version=1, run_id=run_id, snapshot_id=snapshot.snapshot_id, stage=stage,
+        source_digest=source_digest, skill_digest=None, input_digest=snapshot.input_digest,
+        validator_exit_code=None, candidate_release_status=None, blocking_checks=(),
+        open_record_count=None, validated_at=_utc_timestamp(), controller_status="ERROR",
+    )
+    _write_receipt_atomic(receipt_path, receipt)
+    return ValidationResult(receipt=receipt, receipt_path=receipt_path, error_code=error_code)
