@@ -39,9 +39,10 @@ class PinnedSkillBundleTests(unittest.TestCase):
             skill.extract(destination, files)
             skill.verify_tree(destination, files)
             skill.extract(destination, files)
-            (destination / "SKILL.md").write_text("changed")
-            with self.assertRaisesRegex(ValueError, "hash mismatch"):
-                skill.extract(destination, files)
+            (destination / "stale-file.txt").write_text("left by an earlier deploy")
+            skill.extract(destination, files)
+            skill.verify_tree(destination, files)
+            self.assertFalse((destination / "stale-file.txt").exists())
 
     def test_verify_dir_detects_a_stale_installed_skill(self):
         files = skill.pinned_files()
