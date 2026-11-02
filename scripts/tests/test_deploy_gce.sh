@@ -101,6 +101,12 @@ fi
 grep -Fq 'backend/security/codex-worker-seccomp.json' "$repo_root/.github/workflows/ci-cd.yml"
 grep -Fq 'skill-bundle/boq-audit-v6.4.zip' "$repo_root/.github/workflows/ci-cd.yml"
 grep -Fq 'extract --destination /srv/boq-audit-skill-v6.4' "$repo_root/.github/workflows/ci-cd.yml"
+grep -Fq 'rmdir --ignore-fail-on-non-empty /srv/boq-audit-skill-v6.4' "$repo_root/.github/workflows/ci-cd.yml"
+grep -Fq 'chown -R 10001:10001 /srv/boq-audit-skill-v6.4' "$repo_root/.github/workflows/ci-cd.yml"
+if grep -Fq "sudo -u '#10001'" "$repo_root/.github/workflows/ci-cd.yml"; then
+  echo "Workflow uses a sudo UID syntax unsupported on the GCE VM." >&2
+  exit 1
+fi
 
 success_case="$(make_case success)"
 (cd "$success_case" && PATH="$success_case/bin:$PATH" FAKE_DOCKER_LOG="$success_case/docker.log" bash scripts/deploy-gce.sh)
