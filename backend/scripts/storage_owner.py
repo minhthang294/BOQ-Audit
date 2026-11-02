@@ -12,6 +12,7 @@ import sys
 OWNER = 10001
 GROUP = 10001
 ROOTS = (Path("/data"), Path("/codex-home"))
+EXCLUDED_PATHS = (Path("/data/backups"), Path("/codex-home/tmp"))
 DATABASE = Path("/data/database/boq.db")
 
 
@@ -27,6 +28,7 @@ def entries() -> list[Path]:
         found.append(root)
         for directory, names, files in os.walk(root, followlinks=False, onerror=_raise_walk_error):
             base = Path(directory)
+            names[:] = [name for name in names if base / name not in EXCLUDED_PATHS]
             for name in names + files:
                 path = base / name
                 info = path.lstat()
