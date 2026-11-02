@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boq-audit.local/schemas/q10/run_record.schema.json",
+  "title": "Q10 evaluation run record v1",
+  "description": "One retained evaluation attempt with pinned application, runtime, source, input and output digests plus artifact hashes. Failed and partial attempts are retained. Zero precision/recall denominators must be null with an explicit N/A note. Synthetic fixtures only in this repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_record_id",
+    "attempt_id",
+    "corpus_id",
+    "package_id",
+    "reference_package_id",
+    "reference_version",
+    "source_digest",
+    "input_digest",
+    "output_digest",
+    "data_origin",
+    "attempt_status",
+    "created_at",
+    "app",
+    "runtime",
+    "sources",
+    "artifacts",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": { "const": "q10.run_record/1" },
+    "run_record_id": { "$ref": "#/$defs/identifier" },
+    "attempt_id": { "$ref": "#/$defs/identifier" },
+    "corpus_id": { "$ref": "#/$defs/identifier" },
+    "package_id": { "$ref": "#/$defs/identifier" },
+    "reference_package_id": { "$ref": "#/$defs/identifier" },
+    "reference_version": { "type": "integer", "minimum": 1 },
+    "source_digest": { "$ref": "#/$defs/sha256" },
+    "input_digest": { "$ref": "#/$defs/sha256" },
+    "output_digest": {
+      "anyOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "data_origin": {
+      "enum": ["SYNTHETIC", "ANONYMIZED_APPROVED", "REAL_APPROVED"]
+    },
+    "attempt_status": {
+      "enum": ["COMPLETED", "PARTIAL", "FAILED", "BLOCKED"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "app": { "$ref": "#/$defs/app" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "metrics": { "$ref": "#/$defs/metrics" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "attempt_status": { "enum": ["COMPLETED", "PARTIAL"] }
+        },
+        "required": ["attempt_status"]
+      },
+      "then": {
+        "properties": { "output_digest": { "type": "string" } }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 3,
+      "pattern": "^[A-Z][A-Z0-9_-]{2,63}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["app_revision", "deployment_revision"],
+      "properties": {
+        "app_revision": { "type": "string", "minLength": 1 },
+        "deployment_revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_id",
+        "provider",
+        "cli_version",
+        "skill_bundle_id",
+        "skill_version",
+        "skill_digest",
+        "prompt_sha256",
+        "config_sha256"
+      ],
+      "properties": {
+        "model_id": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "cli_version": { "type": "string", "minLength": 1 },
+        "skill_bundle_id": { "$ref": "#/$defs/identifier" },
+        "skill_version": { "type": "string", "minLength": 1 },
+        "skill_digest": { "$ref": "#/$defs/sha256" },
+        "prompt_sha256": { "$ref": "#/$defs/sha256" },
+        "config_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc_id", "revision", "sha256"],
+      "properties": {
+        "doc_id": { "$ref": "#/$defs/identifier" },
+        "revision": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "kind", "filename", "sha256", "size_bytes"],
+      "properties": {
+        "artifact_id": { "$ref": "#/$defs/identifier" },
+        "kind": {
+          "enum": ["AUDIT_JSON", "AUDIT_MARKDOWN", "ANNOTATED_PDF", "EXCEL", "LOG", "TRACE", "OTHER"]
+        },
+        "filename": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tp",
+        "fp",
+        "fn",
+        "unresolved",
+        "unscored",
+        "precision",
+        "recall",
+        "precision_denominator",
+        "recall_denominator",
+        "denominator_notes"
+      ],
+      "properties": {
+        "tp": { "type": "integer", "minimum": 0 },
+        "fp": { "type": "integer", "minimum": 0 },
+        "fn": { "type": "integer", "minimum": 0 },
+        "unresolved": { "type": "integer", "minimum": 0 },
+        "unscored": { "type": "integer", "minimum": 0 },
+        "precision": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "recall": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "precision_denominator": { "type": "integer", "minimum": 0 },
+        "recall_denominator": { "type": "integer", "minimum": 0 },
+        "denominator_notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "precision_denominator": { "const": 0 }
+            },
+            "required": ["precision_denominator"]
+          },
+          "then": {
+            "properties": {
+              "precision": { "type": "null" },
+              "denominator_notes": {
+                "contains": { "pattern": "precision.*N/A|N/A.*precision" }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "precision_denominator": { "minimum": 1 }
+            },
+            "required": ["precision_denominator"]
+          },
+          "then": {
+            "properties": { "precision": { "type": "number" } }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "recall_denominator": { "const": 0 }
+            },
+            "required": ["recall_denominator"]
+          },
+          "then": {
+            "properties": {
+              "recall": { "type": "null" },
+              "denominator_notes": {
+                "contains": { "pattern": "recall.*N/A|N/A.*recall" }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "recall_denominator": { "minimum": 1 }
+            },
+            "required": ["recall_denominator"]
+          },
+          "then": {
+            "properties": { "recall": { "type": "number" } }
+          }
+        }
+      ]
+    }
+  }
+}

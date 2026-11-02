@@ -4,13 +4,15 @@ services:
     build: ./backend
     restart: unless-stopped
     env_file: .env
+    user: "10001:10001"
     environment:
-      CODEX_HOME: /root/.codex
+      HOME: /home/boq-audit
+      CODEX_HOME: /home/boq-audit/.codex
     volumes:
       - ./data:/data
-      - codex_home:/root/.codex
+      - codex_home:/home/boq-audit/.codex
       # Mount the complete skill bundle read-only; set this path per deployment host.
-      - ${BOQ_AUDIT_SKILL_HOST_PATH:-/home/thangpham/.agents/skills/boq-audit}:/opt/codex/skills/boq-audit:ro
+      - ${BOQ_AUDIT_SKILL_HOST_PATH:?Set the absolute host path to the pinned boq-audit skill bundle}:/opt/codex/skills/boq-audit:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 15s
@@ -18,6 +20,7 @@ services:
       retries: 5
     security_opt:
       - no-new-privileges:true
+    cap_drop: [ALL]
     logging:
       driver: json-file
       options:
@@ -32,12 +35,14 @@ services:
     stop_grace_period: 30s
     restart: unless-stopped
     env_file: .env
+    user: "10001:10001"
     environment:
-      CODEX_HOME: /root/.codex
+      HOME: /home/boq-audit
+      CODEX_HOME: /home/boq-audit/.codex
     volumes:
       - ./data:/data
-      - codex_home:/root/.codex
-      - ${BOQ_AUDIT_SKILL_HOST_PATH:-/home/thangpham/.agents/skills/boq-audit}:/opt/codex/skills/boq-audit:ro
+      - codex_home:/home/boq-audit/.codex
+      - ${BOQ_AUDIT_SKILL_HOST_PATH:?Set the absolute host path to the pinned boq-audit skill bundle}:/opt/codex/skills/boq-audit:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -49,11 +54,29 @@ services:
       start_period: 15s
     security_opt:
       - no-new-privileges:true
+      - seccomp=./backend/security/codex-worker-seccomp.json
+    cap_drop: [ALL]
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  storage-owner:
+    profiles: [storage-migration]
+    image: ${IMAGE_REGISTRY:-boq-audit}/backend:${IMAGE_TAG:-local}
+    build: ./backend
+    user: "0:0"
+    entrypoint: ["python", "/app/scripts/storage_owner.py"]
+    command: ["--check"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./data:/data
+      - codex_home:/codex-home
 
   frontend:
     image: ${IMAGE_REGISTRY:-boq-audit}/frontend:${IMAGE_TAG:-local}

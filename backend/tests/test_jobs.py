@@ -2,7 +2,7 @@ from conftest import login
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.main import upload_limiter
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.models.entities import Job, JobStatus
 from app.services import audit_runner
@@ -183,7 +183,7 @@ def test_customer_outputs_hidden_until_completed_and_cross_customer_idor(client,
     assert client.get(f"/api/jobs/{code}/outputs/{excel['id']}/download").status_code == 404
 
 
-def test_successful_audit_waits_for_admin_review(owner_client, pdf_bytes, monkeypatch, tmp_path):
+def test_successful_audit_completes_without_admin_review(owner_client, pdf_bytes, monkeypatch, tmp_path):
     code = create_job(owner_client, pdf_bytes).json()["job_code"]
     with SessionLocal() as db:
         job_id = db.query(Job.id).filter(Job.job_code == code).scalar()
@@ -204,10 +204,47 @@ def test_successful_audit_waits_for_admin_review(owner_client, pdf_bytes, monkey
 
     with SessionLocal() as db:
         job = db.get(Job, job_id)
-        assert job.status == JobStatus.REVIEW
-        assert job.completed_at is None
+        assert job.status == JobStatus.COMPLETED
+        assert job.completed_at is not None
         assert {output.file_type.value for output in job.outputs} == {"EXCEL_REPORT", "ANNOTATED_PDF"}
-    assert owner_client.get(f"/api/jobs/{code}").json()["outputs"] == []
+    assert {output["file_type"] for output in owner_client.get(f"/api/jobs/{code}").json()["outputs"]} == {"EXCEL_REPORT", "ANNOTATED_PDF"}
+
+
+def test_audit_output_with_absolute_path_fails_closed(owner_client, pdf_bytes, monkeypatch, tmp_path):
+    from openpyxl import Workbook
+
+    code = create_job(owner_client, pdf_bytes).json()["job_code"]
+    with SessionLocal() as db:
+        job_id = db.query(Job.id).filter(Job.job_code == code).scalar()
+
+    settings = get_settings()
+    skill = tmp_path / "SKILL.md"
+    skill.write_text("test skill", encoding="utf-8")
+    monkeypatch.setattr(settings, "boq_audit_skill_path", skill)
+    monkeypatch.setattr(settings, "codex_command", "codex")
+    output = tmp_path / "output"
+    output.mkdir()
+    excel = output / "BOQ_Audit_Report.xlsx"
+    workbook = Workbook()
+    workbook.active.append(["Nguồn", "/home/analyst/private/source.pdf"])
+    workbook.save(excel)
+    workbook.close()
+    annotated = output / "Annotated_Original.pdf"
+    annotated.write_bytes(pdf_bytes)
+    monkeypatch.setattr(
+        audit_runner, "_execute",
+        lambda *_: (0, False, "Lỗi nghiêm trọng: 0\nCảnh báo/cần lưu ý: 0", [
+            (excel, audit_runner.OutputType.EXCEL_REPORT),
+            (annotated, audit_runner.OutputType.ANNOTATED_PDF),
+        ]),
+    )
+    audit_runner.run_audit_job(*audit_runner.claim_job(job_id))
+
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        assert job.status == JobStatus.FAILED
+        assert job.outputs == []
+        assert "đường dẫn hệ thống" in job.admin_notes
 
 
 def test_complete_requires_both_outputs(admin_client, pdf_bytes):
@@ -367,3 +404,53 @@ def test_global_storage_quota_blocks_upload_and_marks_health_unhealthy(owner_cli
         assert health.json()["storage"] == "full"
     finally:
         settings.max_total_storage_mb = original_quota
+
+
+def test_customer_notes_are_sanitized_on_write_storage_and_read(client, pdf_bytes):
+    unsafe = '<script>alert(1)</script><p onclick="evil()">Ghi <strong>chú</strong><img src=x onerror=evil()><a href="javascript:evil()">link</a></p>'
+    safe = "<p>Ghi <strong>chú</strong>link</p>"
+    assert login(client, "owner", "owner-pass-123").status_code == 200
+    code = create_job(client, pdf_bytes).json()["job_code"]
+    assert login(client, "admin", "admin-pass-123").status_code == 200
+    updated = client.patch(f"/api/admin/jobs/{code}", json={"customer_notes": unsafe})
+    assert updated.status_code == 200
+    assert updated.json()["customer_notes"] == safe
+    with SessionLocal() as db:
+        job = db.scalar(select(Job).where(Job.job_code == code))
+        assert job.customer_notes == safe
+        job.status = JobStatus.COMPLETED
+        db.commit()
+    assert login(client, "owner", "owner-pass-123").status_code == 200
+    assert client.get(f"/api/jobs/{code}").json()["customer_notes"] == safe
+
+
+def _xls_upload(owner_client, pdf_bytes):
+    return owner_client.post(
+        "/api/jobs",
+        data={"project_name": "Cầu XLS"},
+        files={
+            "file": ("drawing.pdf", pdf_bytes, "application/pdf"),
+            "estimate_file": (
+                "estimate.xls",
+                bytes.fromhex("d0cf11e0a1b11ae1") + b"synthetic xls",
+                "application/vnd.ms-excel",
+            ),
+        },
+    )
+
+
+def test_xls_estimate_is_rejected_before_persisting_when_checkpoint_worker_enabled(owner_client, pdf_bytes, monkeypatch):
+    monkeypatch.setattr(get_settings(), "audit_checkpoint_worker_enabled", True)
+    response = _xls_upload(owner_client, pdf_bytes)
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert ".xls" in detail and ".xlsx" in detail
+    with SessionLocal() as db:
+        assert db.scalar(select(Job.id)) is None
+
+
+def test_xls_estimate_is_accepted_in_legacy_mode(owner_client, pdf_bytes, monkeypatch):
+    monkeypatch.setattr(get_settings(), "audit_checkpoint_worker_enabled", False)
+    response = _xls_upload(owner_client, pdf_bytes)
+    assert response.status_code == 201
+    assert response.json()["estimate_input"]["original_filename"].endswith(".xls")

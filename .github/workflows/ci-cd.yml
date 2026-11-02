@@ -29,12 +29,25 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Vietnamese annotation font
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+
+      - name: Verify and extract pinned BOQ Audit skill
+        run: |
+          python scripts/prepare_pinned_skill.py extract
+          python -m unittest scripts.tests.test_prepare_pinned_skill -v
+
       - name: Backend tests
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
           PYTHONPATH=. pytest -q
+
+      - name: Evaluation and corpus tests
+        run: python -m unittest evaluation.test_evaluate_audit_quality evaluation.test_corpus_manifest evaluation.test_evaluate_audit_corpus -v
 
       - uses: actions/setup-node@v7
         with:
@@ -46,6 +59,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm test
           npm run typecheck
           npm run build
 
@@ -219,17 +233,19 @@ jobs:
           set -euo pipefail
           IMAGE_REGISTRY="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPOSITORY}"
           [[ "$IMAGE_REGISTRY" =~ ^[a-z0-9-]+-docker[.]pkg[.]dev/[a-z][a-z0-9-]{4,28}/[a-z][a-z0-9-]{2,62}$ ]] || { echo "Artifact Registry path is invalid" >&2; exit 1; }
-          printf 'IMAGE_REGISTRY=%s\nIMAGE_TAG=%s\n' "$IMAGE_REGISTRY" "$IMAGE_TAG" > "$RUNNER_TEMP/deploy.env"
+          printf 'IMAGE_REGISTRY=%s\nIMAGE_TAG=%s\nBOQ_AUDIT_SKILL_HOST_PATH=/srv/boq-audit-skill-v6.4\n' "$IMAGE_REGISTRY" "$IMAGE_TAG" > "$RUNNER_TEMP/deploy.env"
           chmod 600 "$RUNNER_TEMP/deploy.env"
-          echo "IMAGE_REGISTRY=$IMAGE_REGISTRY" >> "$GITHUB_ENV"
-          echo "GCE_PROJECT_ID=${GCE_PROJECT_ID:-$GCP_PROJECT_ID}" >> "$GITHUB_ENV"
-          echo "GCE_DEPLOY_PATH=${GCE_DEPLOY_PATH:-/home/hello291994/BOQ-Audit}" >> "$GITHUB_ENV"
+          {
+            echo "IMAGE_REGISTRY=$IMAGE_REGISTRY"
+            echo "GCE_PROJECT_ID=${GCE_PROJECT_ID:-$GCP_PROJECT_ID}"
+            echo "GCE_DEPLOY_PATH=${GCE_DEPLOY_PATH:-/home/hello291994/BOQ-Audit}"
+          } >> "$GITHUB_ENV"
 
       - name: Copy deployment files and deploy over IAP
         run: |
           set -euo pipefail
           REMOTE_TMP="/tmp/boq-audit-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command="mkdir -p '$REMOTE_TMP'"
-          gcloud compute scp docker-compose.yml scripts/deploy-gce.sh "$RUNNER_TEMP/deploy.env" "$GCE_INSTANCE:$REMOTE_TMP/" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet
-          REMOTE_COMMAND="set -e; trap \"sudo rm -f $REMOTE_TMP/docker-compose.yml $REMOTE_TMP/deploy-gce.sh $REMOTE_TMP/deploy.env; rmdir $REMOTE_TMP 2>/dev/null || true\" EXIT; sudo install -d '$GCE_DEPLOY_PATH/scripts'; sudo install -m 0644 '$REMOTE_TMP/docker-compose.yml' '$GCE_DEPLOY_PATH/docker-compose.yml'; sudo install -m 0755 '$REMOTE_TMP/deploy-gce.sh' '$GCE_DEPLOY_PATH/scripts/deploy-gce.sh'; sudo install -m 0600 '$REMOTE_TMP/deploy.env' '$GCE_DEPLOY_PATH/.deploy.env'; sudo bash '$GCE_DEPLOY_PATH/scripts/deploy-gce.sh'"
+          gcloud compute scp docker-compose.yml scripts/deploy-gce.sh scripts/prepare_pinned_skill.py skill-bundle/boq-audit-v6.4.zip backend/app/boq_audit_skill_manifest.json backend/security/codex-worker-seccomp.json "$RUNNER_TEMP/deploy.env" "$GCE_INSTANCE:$REMOTE_TMP/" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet
+          REMOTE_COMMAND="set -e; trap \"sudo rm -f $REMOTE_TMP/docker-compose.yml $REMOTE_TMP/deploy-gce.sh $REMOTE_TMP/prepare_pinned_skill.py $REMOTE_TMP/boq-audit-v6.4.zip $REMOTE_TMP/boq_audit_skill_manifest.json $REMOTE_TMP/codex-worker-seccomp.json $REMOTE_TMP/deploy.env; rmdir $REMOTE_TMP 2>/dev/null || true\" EXIT; sudo install -d '$GCE_DEPLOY_PATH/scripts' '$GCE_DEPLOY_PATH/backend/security' '$GCE_DEPLOY_PATH/backend/app' '$GCE_DEPLOY_PATH/skill-bundle'; sudo install -d -o 10001 -g 10001 /srv/boq-audit-skill-v6.4; sudo install -m 0644 '$REMOTE_TMP/docker-compose.yml' '$GCE_DEPLOY_PATH/docker-compose.yml'; sudo install -m 0755 '$REMOTE_TMP/deploy-gce.sh' '$GCE_DEPLOY_PATH/scripts/deploy-gce.sh'; sudo install -m 0755 '$REMOTE_TMP/prepare_pinned_skill.py' '$GCE_DEPLOY_PATH/scripts/prepare_pinned_skill.py'; sudo install -m 0644 '$REMOTE_TMP/boq-audit-v6.4.zip' '$GCE_DEPLOY_PATH/skill-bundle/boq-audit-v6.4.zip'; sudo install -m 0644 '$REMOTE_TMP/boq_audit_skill_manifest.json' '$GCE_DEPLOY_PATH/backend/app/boq_audit_skill_manifest.json'; sudo -u '#10001' python3 '$GCE_DEPLOY_PATH/scripts/prepare_pinned_skill.py' extract --destination /srv/boq-audit-skill-v6.4; sudo install -m 0644 '$REMOTE_TMP/codex-worker-seccomp.json' '$GCE_DEPLOY_PATH/backend/security/codex-worker-seccomp.json'; sudo install -m 0600 '$REMOTE_TMP/deploy.env' '$GCE_DEPLOY_PATH/.deploy.env'; sudo bash '$GCE_DEPLOY_PATH/scripts/deploy-gce.sh'"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCE_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command="$REMOTE_COMMAND"

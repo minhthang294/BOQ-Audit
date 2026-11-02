@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text
 
-from app.api import admin, auth, chat, excel, jobs, users
+from app.api import admin, auth, chat, excel, jobs, lessons, users
 from app.auth.security import hash_password
 from app.api.deps import session_user
 from app.core.migrations import migrate_and_recover
@@ -60,6 +60,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(lessons.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(excel.router, prefix="/api")
 app.include_router(users.router, prefix="/api")

@@ -11,8 +11,9 @@ from app.api.deps import admin_user, current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.telegram import notify_pdf_upload
-from app.models.entities import Job, JobEstimateInput, JobNarrativeInput, JobStatus, User, UserRole, utcnow
+from app.models.entities import AuditInventoryApproval, AuditRun, AuditRunCheckpoint, Job, JobEstimateInput, JobNarrativeInput, JobStatus, User, UserRole, utcnow
 from app.schemas.api import AICapacityResponse, CodexUsageResponse, CustomerUpdateJob, JobListResponse, JobResponse, MessageResponse, OutputResponse
+from app.services.audit_quality_invalidation import has_quality_review, record_mutation_invalidation
 from app.storage.files import EXCEL_MIMES, NARRATIVE_MIMES, PDF_MIMES, random_stored_name, save_upload, stored_job_file, stream_file, validate_upload
 from app.services.codex_usage import get_codex_usage
 
@@ -117,6 +118,16 @@ async def create_job(
     narrative_metadata: tuple[str, str] | None = None
     if narrative_file and narrative_file.filename:
         narrative_metadata = validate_upload(narrative_file, {".pdf", ".doc", ".docx"}, NARRATIVE_MIMES)
+    if estimate_metadata and estimate_metadata[1] == ".xls" and get_settings().audit_checkpoint_worker_enabled:
+        file.file.close()
+        if estimate_file:
+            estimate_file.file.close()
+        if narrative_file:
+            narrative_file.file.close()
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Chế độ audit checkpoint chỉ hỗ trợ dự toán .xlsx; vui lòng chuyển đổi tệp .xls sang .xlsx rồi tải lên.",
+        )
     clean_project_name = project_name.strip()
     if not clean_project_name:
         file.file.close()
@@ -124,7 +135,7 @@ async def create_job(
             estimate_file.file.close()
         if narrative_file:
             narrative_file.file.close()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Tên công trình không được để trống")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Tên công trình không được để trống")
     # SQLite không có row-level lock. BEGIN IMMEDIATE tuần tự hóa đoạn kiểm tra
     # quota + tạo job, ngăn hai upload đồng thời cùng vượt giới hạn.
     if db.bind and db.bind.dialect.name == "sqlite":
@@ -225,6 +236,12 @@ async def retry_job(
     job = owned_job(db, job_code, user)
     if job.status != JobStatus.FAILED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Chỉ có thể thử lại hồ sơ bị lỗi")
+    if not get_settings().audit_checkpoint_worker_enabled and (
+        db.scalar(select(AuditInventoryApproval.id).where(AuditInventoryApproval.job_id == job.id).limit(1)) is not None
+        or db.scalar(select(AuditRunCheckpoint.run_id).join(AuditRun, AuditRun.id == AuditRunCheckpoint.run_id)
+                     .where(AuditRun.job_id == job.id).limit(1)) is not None
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Hồ sơ đã duyệt inventory cần checkpoint worker trước khi thử lại")
     active_jobs = db.scalar(
         select(func.count(Job.id)).where(
             Job.user_id == user.id,
@@ -234,6 +251,7 @@ async def retry_job(
     if active_jobs >= MAX_ACTIVE_JOBS_PER_USER:
         raise HTTPException(status.HTTP_409_CONFLICT, "Bạn đang có 2 hồ sơ được xử lý. Vui lòng chờ một hồ sơ hoàn thành trước khi thử lại.")
 
+    record_mutation_invalidation(db, job.id, user.id, "customer retry")
     job.outputs.clear()
     job.status = JobStatus.SUBMITTED
     job.started_at = None
@@ -262,8 +280,13 @@ async def rename_job(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    db.rollback()
+    db.execute(text("BEGIN IMMEDIATE"))
     job = owned_job(db, job_code, user)
+    changed = job.project_name != payload.project_name
     job.project_name = payload.project_name
+    if changed:
+        record_mutation_invalidation(db, job.id, user.id, "customer project rename")
     db.commit()
     return visible_customer_job(owned_job(db, job_code, user))
 
@@ -275,6 +298,8 @@ async def delete_job(job_code: str, user: User = Depends(current_user), db: Sess
     job = owned_job(db, job_code, user)
     if job.status == JobStatus.PROCESSING or job.input_file_path == "pending":
         raise HTTPException(status.HTTP_409_CONFLICT, "Không thể xóa hồ sơ đang lưu hoặc xử lý")
+    if has_quality_review(db, job.id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Hồ sơ có lịch sử chất lượng, không thể xóa cứng")
     jobs_root = get_settings().jobs_dir.resolve()
     job_directory = (jobs_root / job.job_code).resolve()
     if job_directory.parent != jobs_root:

@@ -1,0 +1,72 @@
+{
+  "schema_version": "q10.run_record/1",
+  "run_record_id": "RUN-SYN-001",
+  "attempt_id": "ATT-SYN-001",
+  "corpus_id": "CORPUS-SYN-001",
+  "package_id": "JOB-SYN-001",
+  "reference_package_id": "PKG-SYN-REF-001",
+  "reference_version": 1,
+  "source_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "input_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "output_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "data_origin": "SYNTHETIC",
+  "attempt_status": "COMPLETED",
+  "created_at": "2026-10-25T09:30:00Z",
+  "app": {
+    "app_revision": "8cdacddc3ec8187d29d20d2bc1792197abe55bdd",
+    "deployment_revision": "SYNTHETIC-DEPLOY-001"
+  },
+  "runtime": {
+    "model_id": "synthetic-model",
+    "provider": "synthetic-provider",
+    "cli_version": "synthetic-cli-0",
+    "skill_bundle_id": "SKILL-SYN-001",
+    "skill_version": "1.0.0",
+    "skill_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "prompt_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "config_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "sources": [
+    {
+      "doc_id": "DOC-SYN-DWG-001",
+      "revision": "R01",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "doc_id": "DOC-SYN-BOQ-001",
+      "revision": "R01",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "ART-SYN-001",
+      "kind": "AUDIT_JSON",
+      "filename": "synthetic-audit.json",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size_bytes": 1024
+    },
+    {
+      "artifact_id": "ART-SYN-002",
+      "kind": "ANNOTATED_PDF",
+      "filename": "synthetic-annotated.pdf",
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "size_bytes": 2048
+    }
+  ],
+  "metrics": {
+    "tp": 1,
+    "fp": 1,
+    "fn": 1,
+    "unresolved": 1,
+    "unscored": 1,
+    "precision": 0.5,
+    "recall": 0.5,
+    "precision_denominator": 2,
+    "recall_denominator": 2,
+    "denominator_notes": [
+      "Synthetic fixture only.",
+      "Unresolved and unscored items are excluded from denominators."
+    ]
+  }
+}

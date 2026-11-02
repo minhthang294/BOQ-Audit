@@ -8,6 +8,7 @@ import { JobTiming } from "@/components/JobTiming";
 import { AuditProgress } from "@/components/AuditProgress";
 import { ProjectChat } from "@/components/ProjectChat";
 import { api, fileSize, formatDate } from "@/lib/api";
+import { buildDownloadLinks } from "@/lib/outputLinks";
 import { AICapacity, Job, OutputType } from "@/types";
 
 export default function JobDetail({ params }: { params: Promise<{job_code: string}> }) {
@@ -31,11 +32,7 @@ export default function JobDetail({ params }: { params: Promise<{job_code: strin
   if (error) return <Shell><p className="error">{error}</p></Shell>;
   if (!job) return <Shell><p className="text-slate-500">Đang tải hồ sơ…</p></Shell>;
   const output = (type: OutputType) => job.outputs.find(item => item.file_type === type);
-  const downloads = [
-    { item: output("EXCEL_REPORT"), label: "TẢI BÁO CÁO RÀ SOÁT BOQ" },
-    { item: output("ESTIMATE_REPORT"), label: "TẢI BÁO CÁO RÀ SOÁT DỰ TOÁN" },
-    { item: output("ANNOTATED_PDF"), label: "TẢI PDF ĐÁNH DẤU" },
-  ];
+  const downloads = buildDownloadLinks(job.outputs);
   const annotatedPdf = output("ANNOTATED_PDF");
   const showAnnotatedPdf = job.status === "COMPLETED" && !!annotatedPdf;
   const viewerTitle = showAnnotatedPdf ? "PDF đã đánh dấu lỗi" : "Hồ sơ PDF đã gửi";

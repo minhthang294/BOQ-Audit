@@ -1,0 +1,209 @@
+{
+  "schema_version": "q10.reference/1",
+  "corpus_id": "CORPUS-SYN-001",
+  "package_id": "PKG-SYN-REF-001",
+  "label_version": 1,
+  "case_type": "SYNTHETIC_SEED",
+  "data_origin": "SYNTHETIC",
+  "discipline": "Synthetic quantity reconciliation",
+  "label_reviewer_id": "REVIEWER-SYN-001",
+  "source": {
+    "documents": [
+      {
+        "doc_id": "DOC-SYN-DWG-001",
+        "filename": "synthetic-drawing-r01.pdf",
+        "revision": "R01",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "document_kind": "DRAWING"
+      },
+      {
+        "doc_id": "DOC-SYN-BOQ-001",
+        "filename": "synthetic-boq-r01.xlsx",
+        "revision": "R01",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "document_kind": "BOQ"
+      }
+    ]
+  },
+  "source_verification": {
+    "status": "MATCH",
+    "checked_by": "REVIEWER-SYN-001",
+    "checked_at": "2026-10-24T09:00:00Z",
+    "note": "Synthetic revision and hash values are fixture labels, not real documents."
+  },
+  "scope": {
+    "description": "Synthetic one-object quantity reconciliation only.",
+    "page_ids": ["PAGE-SYN-001", "PAGE-SYN-002"],
+    "object_ids": ["OBJ-SYN-D17", "OBJ-SYN-C12"],
+    "required_checks": ["DIMENSIONAL_RECALC", "BOQ_ROW_PARITY"]
+  },
+  "exclusions": [
+    "No structural design verification.",
+    "No real project or customer data."
+  ],
+  "limitations": [
+    "Synthetic geometry only.",
+    "Labels are illustrative and are not pilot evidence."
+  ],
+  "supersedes": null,
+  "references": [
+    {
+      "ref_id": "REF-SYN-001",
+      "root_ref_id": "REF-SYN-001",
+      "object_id": "OBJ-SYN-D17",
+      "classification": "QUANTITY",
+      "severity": "HIGH",
+      "location": {
+        "doc_id": "DOC-SYN-DWG-001",
+        "revision": "R01",
+        "pdf_page": 1,
+        "printed_sheet": "S-01",
+        "boq_sheet": null,
+        "boq_row": null,
+        "boq_cell": null
+      },
+      "evidence": [
+        {
+          "evidence_id": "EV-SYN-001",
+          "kind": "DRAWING",
+          "anchor": "S-01 detail D17",
+          "description": "Synthetic dimension chain: 2.00 x 1.00 x 2.00 m.",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "numerical_basis": {
+        "method": "Rectangular volume recalculation",
+        "formula": "2.00*1.00*2.00",
+        "inputs": [
+          {
+            "name": "length",
+            "value": 2.0,
+            "unit": "m",
+            "source_ref": "EV-SYN-001"
+          },
+          {
+            "name": "width",
+            "value": 1.0,
+            "unit": "m",
+            "source_ref": "EV-SYN-001"
+          },
+          {
+            "name": "height",
+            "value": 2.0,
+            "unit": "m",
+            "source_ref": "EV-SYN-001"
+          }
+        ],
+        "units": "m3",
+        "assumptions": ["Sharp corners; no deduction."],
+        "tolerance": {
+          "kind": "APPROVED_CASE_SPECIFIC",
+          "value": 0.01,
+          "note": "Synthetic tolerance for fixture only."
+        },
+        "expected": 4.0,
+        "actual": 5.0,
+        "delta": 1.0
+      },
+      "adjudication_status": "ADJUDICATED",
+      "reviewer_id": "REVIEWER-SYN-001",
+      "version": 1,
+      "supersedes": null
+    },
+    {
+      "ref_id": "REF-SYN-002",
+      "root_ref_id": "REF-SYN-002",
+      "object_id": "OBJ-SYN-D17",
+      "classification": "GEOMETRY",
+      "severity": "MEDIUM",
+      "location": {
+        "doc_id": "DOC-SYN-DWG-001",
+        "revision": "R01",
+        "pdf_page": 2,
+        "printed_sheet": "S-02",
+        "boq_sheet": null,
+        "boq_row": null,
+        "boq_cell": null
+      },
+      "evidence": [
+        {
+          "evidence_id": "EV-SYN-002",
+          "kind": "DRAWING",
+          "anchor": "S-02 dimension string",
+          "description": "Synthetic dimension intentionally left unreadable.",
+          "sha256": null
+        }
+      ],
+      "numerical_basis": {
+        "method": "Geometry recalculation blocked",
+        "formula": null,
+        "inputs": [],
+        "units": "m3",
+        "assumptions": ["Source dimension is intentionally unreadable in this fixture."],
+        "tolerance": {
+          "kind": "APPROVED_CASE_SPECIFIC",
+          "value": null,
+          "note": "Cannot set tolerance while geometry is unresolved."
+        },
+        "expected": null,
+        "actual": null,
+        "delta": null
+      },
+      "adjudication_status": "UNRESOLVED",
+      "reviewer_id": "REVIEWER-SYN-001",
+      "version": 1,
+      "supersedes": null
+    },
+    {
+      "ref_id": "REF-SYN-003",
+      "root_ref_id": "REF-SYN-003",
+      "object_id": "OBJ-SYN-C12",
+      "classification": "OMISSION",
+      "severity": "CRITICAL",
+      "location": {
+        "doc_id": "DOC-SYN-BOQ-001",
+        "revision": "R01",
+        "pdf_page": null,
+        "printed_sheet": null,
+        "boq_sheet": "BQ-01",
+        "boq_row": 12,
+        "boq_cell": "D12"
+      },
+      "evidence": [
+        {
+          "evidence_id": "EV-SYN-003",
+          "kind": "BOQ",
+          "anchor": "BQ-01 row 12",
+          "description": "Synthetic BOQ row omitted from the report under test.",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "numerical_basis": {
+        "method": "Item presence check",
+        "formula": null,
+        "inputs": [
+          {
+            "name": "expected_item",
+            "value": "SYNTHETIC-ITEM-C12",
+            "unit": null,
+            "source_ref": "BQ-01 row 12"
+          }
+        ],
+        "units": "item",
+        "assumptions": [],
+        "tolerance": {
+          "kind": "EXACT",
+          "value": 0,
+          "note": "Presence must match exactly."
+        },
+        "expected": 1,
+        "actual": 0,
+        "delta": -1
+      },
+      "adjudication_status": "ADJUDICATED",
+      "reviewer_id": "REVIEWER-SYN-001",
+      "version": 1,
+      "supersedes": null
+    }
+  ]
+}

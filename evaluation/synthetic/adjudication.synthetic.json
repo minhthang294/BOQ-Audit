@@ -1,0 +1,73 @@
+{
+  "schema_version": "q10.adjudication/1",
+  "adjudication_id": "ADJ-SYN-001",
+  "corpus_id": "CORPUS-SYN-001",
+  "package_id": "JOB-SYN-001",
+  "reference_package_id": "PKG-SYN-REF-001",
+  "reference_version": 1,
+  "run_record_id": "RUN-SYN-001",
+  "attempt_id": "ATT-SYN-001",
+  "data_origin": "SYNTHETIC",
+  "reviewer_id": "REVIEWER-SYN-001",
+  "reviewed_at": "2026-10-25T10:00:00Z",
+  "findings": [
+    {
+      "finding_id": "FIND-SYN-001",
+      "root_finding_id": "FIND-SYN-001",
+      "duplicate_of": null,
+      "ref_id": "REF-SYN-001",
+      "disposition": "TP",
+      "rationale": "Reported quantity 5.00 m3; recalculated quantity is 4.00 m3.",
+      "evidence_checked": true,
+      "counts_as_unique": true
+    },
+    {
+      "finding_id": "FIND-SYN-002",
+      "root_finding_id": "FIND-SYN-002",
+      "duplicate_of": null,
+      "ref_id": null,
+      "disposition": "FP",
+      "rationale": "Reported synthetic allowance is legitimate and not a reference error.",
+      "evidence_checked": true,
+      "counts_as_unique": true
+    },
+    {
+      "finding_id": "FIND-SYN-003",
+      "root_finding_id": "FIND-SYN-001",
+      "duplicate_of": "FIND-SYN-001",
+      "ref_id": "REF-SYN-001",
+      "disposition": "DUPLICATE",
+      "rationale": "Duplicate report of FIND-SYN-001; must not increase TP.",
+      "evidence_checked": true,
+      "counts_as_unique": false
+    },
+    {
+      "finding_id": "FIND-SYN-004",
+      "root_finding_id": "FIND-SYN-004",
+      "duplicate_of": null,
+      "ref_id": null,
+      "disposition": "UNRESOLVED",
+      "rationale": "Synthetic source dimension is unreadable, so matching cannot be decided.",
+      "evidence_checked": true,
+      "counts_as_unique": false
+    },
+    {
+      "finding_id": "FIND-SYN-005",
+      "root_finding_id": "FIND-SYN-005",
+      "duplicate_of": null,
+      "ref_id": null,
+      "disposition": "OUT_OF_SCOPE",
+      "rationale": "Reported item lies outside the synthetic scope page and object set.",
+      "evidence_checked": false,
+      "counts_as_unique": false
+    }
+  ],
+  "missed_references": [
+    {
+      "ref_id": "REF-SYN-003",
+      "disposition": "FN",
+      "rationale": "Report under test omitted synthetic BOQ row BQ-01 row 12.",
+      "source_checked": true
+    }
+  ]
+}

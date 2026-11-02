@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "description": "Synthetic complete metadata fixture for the pinned BOQ Audit v6.4 validator. Values are keyed by the 12 JSON stems expected by validate_run.py. Binary deliverables are NOT stored here; the test harness creates placeholder bytes outside this fixture.",
+  "files": {
+    "run_manifest.json": {
+      "protocol_version": "v6.4",
+      "generated_at": "2026-10-24T00:00:00+00:00",
+      "document_inventory": [
+        {
+          "doc_id": "DOC-001",
+          "filename": "fixture.pdf",
+          "page_count": 1,
+          "sha256": "synthetic-sha256-not-a-real-file"
+        }
+      ],
+      "scope_pages_total": 1,
+      "detail_rows_total": 1,
+      "summary_rows_total": 1,
+      "sequence_sections_total": 1,
+      "sequence_sections_checked": 1,
+      "discrete_rows_total": 1,
+      "discrete_rows_checked": 1,
+      "inventory_verified": true,
+      "tables_inventory_verified": true,
+      "references_read": [
+        "references/anti-false-positive.md",
+        "references/data-and-delivery.md",
+        "references/detail-table-audit.md",
+        "references/evidence.md",
+        "references/execution-workflow.md",
+        "references/functional-closure.md",
+        "references/geometry-assumption-control.md",
+        "references/protocol-v6.4.md",
+        "references/reference-cases.md",
+        "references/regression.md",
+        "references/report-language.md",
+        "references/sanity-gates.md",
+        "references/summary-reconciliation.md",
+        "references/three-pass-protocol.md"
+      ],
+      "memory_cases_consulted": [],
+      "mode": "AUDIT",
+      "pass1_complete": true,
+      "pass2_complete": true,
+      "pass3_complete": true,
+      "summary_reconciliation_complete": true,
+      "drawing_boq_orphan_check_complete": true,
+      "paired_geometry_checks_complete": true,
+      "false_positive_propagation_complete": true,
+      "language_qa_pass": true,
+      "annotation_qa_pass": true,
+      "assumption_ledger_complete": true,
+      "reconciliation_labeled_complete": true,
+      "scope_overlap_check_complete": true,
+      "paired_side_instance_check_complete": true,
+      "target_fit_check_complete": true,
+      "deliverables": {
+        "excel": "../output/report.xlsx",
+        "annotated_pdf": "../output/report.pdf"
+      },
+      "warning": "Synthetic metadata fixture only; no engineering verification.",
+      "execution_contract": "checkpoint-v1",
+      "memory_lookup": {
+        "status": "UNAVAILABLE",
+        "sources": [],
+        "reason": "Synthetic offline fixture; no memory service consulted."
+      }
+    },
+    "checkpoint.json": {
+      "stage": "release",
+      "active_scope": [],
+      "next_action": "Run the pinned validator for the requested stage.",
+      "pending_rechecks": [],
+      "blockers": [],
+      "last_gate_report": null
+    },
+    "page_ledger.json": [
+      {
+        "page_id": "DOC-001-P00001",
+        "source_pdf": "fixture.pdf",
+        "pdf_page": 1,
+        "printed_sheet": "S-01",
+        "drawing_no": "FIXTURE-01",
+        "revision": "R01",
+        "page_type": "drawing",
+        "has_quantity_table": false,
+        "status": "VERIFIED",
+        "evidence_anchors": [
+          "fixture.pdf p1"
+        ],
+        "notes": "Synthetic page record."
+      }
+    ],
+    "detail_rows.json": [
+      {
+        "row_id": "ROW-1",
+        "source_anchor": "fixture.pdf p1 row 1",
+        "spec_status": "VERIFIED",
+        "qty_status": "VERIFIED",
+        "status": "VERIFIED",
+        "unit": "cai",
+        "integer_sanity_checked": true
+      }
+    ],
+    "summary_lineage.json": [
+      {
+        "summary_row_id": "SUM-1",
+        "source_anchor": "fixture.pdf p1 summary 1",
+        "source_rows": [
+          "ROW-1"
+        ],
+        "status": "VERIFIED",
+        "name_spec_match": true,
+        "unit_match": true,
+        "scope_match": true
+      }
+    ],
+    "calculation_ledger.json": [
+      {
+        "calc_id": "CALC-1",
+        "formula": "n",
+        "inputs": {
+          "n": 1
+        },
+        "source_anchors": [
+          "fixture.pdf p1"
+        ],
+        "unit": "cai",
+        "raw_result": 1,
+        "rounded_result": 1,
+        "pass1_result": 1,
+        "pass2_result": 1,
+        "pass3_result": 1,
+        "calculation_class": "INDEPENDENT_TAKEOFF",
+        "assumption_ids": [],
+        "status": "VERIFIED"
+      }
+    ],
+    "issues.json": [],
+    "regression_checks.json": [
+      {"case_id": "R-01", "title": "Bearing inference", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-02", "title": "Mesh/spec vs quantity", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-03", "title": "Functional dimension", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-04", "title": "D18 depth mismatch", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-05", "title": "Missing side factor", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-06", "title": "Repeat factor", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-07", "title": "Detail-Summary mismatch", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-08", "title": "Section/STT duplicate", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-09", "title": "Discrete quantity non-integer", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-10", "title": "Small spec typo", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-11", "title": "Symmetry false assumption", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-12", "title": "False positive closure", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-13", "title": "Reset-aware row sequence", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-14", "title": "Detail-Summary row parity", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-15", "title": "Discrete fractional summary", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-16", "title": "FRP thickness mismatch", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-17", "title": "Symmetry closure and downstream recalc", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-18", "title": "User-claim override", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-19", "title": "Reconciliation masquerading as takeoff", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-20", "title": "Complex-geometry primitive assumption", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-21", "title": "Paired-side explicit values", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-22", "title": "Scope overlap / double count", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."},
+      {"case_id": "R-23", "title": "Target-fit detection", "status": "NOT_APPLICABLE", "target_ids": [], "evidence_anchors": ["fixture.pdf p1 scope"], "reason": "Synthetic fixture: case not present in this scope."}
+    ],
+    "assumption_ledger.json": [],
+    "pass2_review.json": [
+      {
+        "review_id": "REV-2",
+        "pass_no": 2,
+        "target": "DOC-001-P00001",
+        "page_ids": [
+          "DOC-001-P00001"
+        ],
+        "evidence": [
+          "fixture.pdf p1"
+        ],
+        "method": "Synthetic metadata pass 2",
+        "result": "fixture only; no engineering conclusion",
+        "case_ids": []
+      }
+    ],
+    "pass3_review.json": [
+      {
+        "review_id": "REV-3",
+        "pass_no": 3,
+        "target": "DOC-001-P00001",
+        "page_ids": [
+          "DOC-001-P00001"
+        ],
+        "evidence": [
+          "fixture.pdf p1"
+        ],
+        "method": "Synthetic metadata pass 3",
+        "result": "fixture only; no engineering conclusion",
+        "case_ids": [],
+        "target_ids": [],
+        "issue_ids": []
+      }
+    ],
+    "annotation_qa.json": []
+  }
+}
