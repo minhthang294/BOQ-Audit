@@ -83,8 +83,14 @@ def verify_archive(files: dict[str, str], path: Path = ARCHIVE) -> None:
 def extract(destination: Path, files: dict[str, str]) -> None:
     verify_archive(files)
     if destination.exists():
-        verify_tree(destination, files)
-        return
+        if destination.is_symlink() or not destination.is_dir():
+            raise ValueError("skill destination must be a real directory")
+        try:
+            verify_tree(destination, files)
+        except ValueError:
+            pass
+        else:
+            return
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".skill-stage-", dir=destination.parent))
     try:
@@ -95,7 +101,18 @@ def extract(destination: Path, files: dict[str, str]) -> None:
                 with archive.open(name) as source, target.open("wb") as output:
                     shutil.copyfileobj(source, output)
         verify_tree(temporary, files)
-        temporary.rename(destination)
+        if destination.exists():
+            backup = Path(tempfile.mkdtemp(prefix=".skill-backup-", dir=destination.parent))
+            backup.rmdir()
+            destination.rename(backup)
+            try:
+                temporary.rename(destination)
+            except Exception:
+                backup.rename(destination)
+                raise
+            shutil.rmtree(backup)
+        else:
+            temporary.rename(destination)
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
