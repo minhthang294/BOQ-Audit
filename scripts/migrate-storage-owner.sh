@@ -11,7 +11,14 @@ for service in backend worker frontend caddy; do
   fi
 done
 
-docker compose --profile storage-migration run --rm --no-deps storage-owner --assert-idle --check
+if docker compose --profile storage-migration run --rm --no-deps storage-owner --assert-idle --check; then
+  :
+else
+  check_status=$?
+  if [[ "$check_status" -ne 1 ]]; then
+    exit "$check_status"
+  fi
+fi
 ./scripts/backup.sh
 backup="$(ls -1t backups/boq-backup-*.tar.gz | head -n 1)"
 python3 - "$backup" <<'PY'

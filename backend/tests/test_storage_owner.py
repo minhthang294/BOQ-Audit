@@ -58,6 +58,18 @@ class StorageOwnerTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "hard-linked"):
                     storage_owner.entries()
 
+    def test_storage_scan_leaves_private_backup_directory_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            data, codex = Path(temporary) / "data", Path(temporary) / "codex"
+            backup = data / "backups"
+            backup.mkdir(parents=True)
+            codex.mkdir()
+            (backup / "private.tar.gz").write_text("backup", encoding="utf-8")
+            with patch.object(storage_owner, "ROOTS", (data, codex)), patch.object(storage_owner, "EXCLUDED_PATHS", (backup,)):
+                paths = storage_owner.entries()
+            self.assertNotIn(backup, paths)
+            self.assertNotIn(backup / "private.tar.gz", paths)
+
     def test_idle_check_rejects_active_jobs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             database = Path(temporary) / "boq.db"
