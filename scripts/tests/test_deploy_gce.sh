@@ -105,6 +105,7 @@ grep -Fq 'rmdir --ignore-fail-on-non-empty /srv/boq-audit-skill-v6.4' "$repo_roo
 grep -Fq 'chown -R 10001:10001 /srv/boq-audit-skill-v6.4' "$repo_root/.github/workflows/ci-cd.yml"
 grep -Fq 'storage-owner --assert-idle --check' "$repo_root/.github/workflows/ci-cd.yml"
 grep -Fq 'migrate-storage-owner.sh' "$repo_root/.github/workflows/ci-cd.yml"
+grep -Fq "cd '\$GCE_DEPLOY_PATH'; if sudo docker compose" "$repo_root/.github/workflows/ci-cd.yml"
 if grep -Fq "sudo -u '#10001'" "$repo_root/.github/workflows/ci-cd.yml"; then
   echo "Workflow uses a sudo UID syntax unsupported on the GCE VM." >&2
   exit 1
