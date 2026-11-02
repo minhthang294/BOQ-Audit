@@ -9,6 +9,7 @@ make_case() {
   local name="$1"
   local dir="$test_root/$name"
   mkdir -p "$dir/scripts" "$dir/bin"
+  printf 'IMAGE_REGISTRY=asia-southeast1-docker.pkg.dev/test-project/boq-audit\nIMAGE_TAG=0123456789abcdef0123456789abcdef01234567-123456-1\n' > "$dir/.deploy.env"
   cp "$repo_root/scripts/prepare_storage_migration.sh" "$dir/scripts/prepare_storage_migration.sh"
   cat > "$dir/scripts/migrate-storage-owner.sh" <<'FAKE_MIGRATE'
 #!/usr/bin/env bash
@@ -30,7 +31,7 @@ case "$*" in
       *) exit 1 ;;
     esac
     ;;
-  "compose stop caddy"|"compose start caddy"|"compose stop frontend worker backend") ;;
+  "compose pull backend"|"compose stop caddy"|"compose start caddy"|"compose stop frontend worker backend") ;;
   *) echo "Unexpected docker command: $*" >&2; exit 2 ;;
 esac
 FAKE_DOCKER
@@ -48,6 +49,16 @@ migrate_case="$(make_case migrate)"
 grep -Fxq 'compose stop caddy' "$migrate_case/docker.log"
 grep -Fxq 'compose stop frontend worker backend' "$migrate_case/docker.log"
 [[ -e "$migrate_case/migrated" ]]
+python3 - "$migrate_case/docker.log" <<'PY'
+from pathlib import Path
+import sys
+
+commands = Path(sys.argv[1]).read_text().splitlines()
+assert commands[0] == "compose pull backend"
+assert commands.index("compose pull backend") < commands.index(
+    "compose --profile storage-migration run --rm --no-deps storage-owner --assert-idle --check"
+)
+PY
 
 active_case="$(make_case active-after-drain)"
 if (cd "$active_case" && PATH="$active_case/bin:$PATH" CHECK_MODE=active-second CHECK_COUNT="$active_case/count" DOCKER_LOG="$active_case/docker.log" MIGRATION_MARKER="$active_case/migrated" bash scripts/prepare_storage_migration.sh); then
