@@ -1,6 +1,6 @@
 # BOQ Audit VM staging / canary preflight
 
-Ngày: 31/10/2026; cập nhật local 02/11/2026. Phạm vi: kiểm tra preflight local và chuẩn bị lệnh cho người vận hành. **Không có SSH/GCE, không push image, không chạy migration, không bật feature flag, không sửa VM hay production.**
+Ngày: 31/10/2026; trạng thái pre-rollout được cập nhật 03/11/2026 theo deploy 02/11/2026. Các câu mô tả chưa deploy bên dưới là lịch sử tại thời điểm viết; bằng chứng mới ở §11. Phạm vi checklist vẫn là preflight và việc còn lại cho pilot.
 
 Mục tiêu: trước khi stage skill pin và canary worker trên VM, người vận hành có một checklist review được, biết chính xác lệnh nào chạy, kết quả mong đợi, và rollback nào áp dụng. Tài liệu này không thay thế `docs/ci-cd-gce.md`.
 
@@ -149,3 +149,10 @@ Không có rollback nào tự động đảo database hoặc file. Mọi restore
 2. `BOQ_AUDIT_SKILL_HOST_PATH` hiện tại trên VM là gì, và có cần giữ song song thư mục pin cũ để rollback?
 3. Có cửa sổ maintenance/backup snapshot persistent disk trước lần stage này không?
 4. Ai là engineer ký acceptance và bộ corpus/holdout nào được dùng trước khi đổi flag?
+
+## 11. Deployment status — 2026-11-02
+
+- GitHub Actions run `41398843510` succeeded for release `1a55fd8c39c793eb789d0cfb93d01e1e279bb268` (tag `1a55fd8c39c793eb789d0cfb93d01e1e279bb268-41398843510-1`). Deployment logs reported backend, frontend, worker, Caddy and chat healthy; `/api/health` and `/login` passed.
+- The VM skill pin verified at 64 files. Storage migration changed ownership for 1,221 paths to `10001:10001`. A DB/jobs backup was created; it was not a persistent-disk snapshot.
+- Still unverified/not run: worker seccomp/Codex canary on the VM, a live checkpoint-v4 audit, and direct confirmation that production `AUDIT_CHECKPOINT_WORKER_ENABLED=false`. Do not treat the local canary in §1 as VM evidence.
+- Pilot entry still requires an adjudicated real development/holdout corpus and engineer review/signoff for inventory, quantities, lessons and report marks. No audit ran after deployment; `BOQ-000004` is completed but its result requires engineering review.
