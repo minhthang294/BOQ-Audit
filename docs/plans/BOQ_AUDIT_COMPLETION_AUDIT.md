@@ -23,6 +23,12 @@ Ngày rà: 30/10/2026. Phạm vi: integration worktree `boq-quality/integration`
 
 Không commit/deploy trong lần rà này.
 
+## Deployment status refresh — 2026-11-03
+
+The preceding deployment statements are historical and were superseded on 2026-11-02. GitHub Actions release run `41398843510` succeeded for commit `1a55fd8c39c793eb789d0cfb93d01e1e279bb268` (tag `1a55fd8c39c793eb789d0cfb93d01e1e279bb268-41398843510-1`). Its deployment logs reported backend, frontend, worker, Caddy and chat healthy; `/api/health` and `/login` passed. The VM skill pin was verified at 64 files, storage migration covered 1,221 paths to `10001:10001`, and the DB/jobs backup was created. This was not a persistent-disk snapshot.
+
+The deployment does not close the pilot gates: VM worker seccomp/Codex canary and a live checkpoint-v4 audit were not run; the production value of `AUDIT_CHECKPOINT_WORKER_ENABLED=false` was not directly verified. No adjudicated real development/holdout corpus or engineering acceptance/signoff is recorded. `BOQ-000004` is completed and its result still needs engineering review before use. No audit was run after deployment.
+
 ## Verification refresh — 2026-11-02
 
 Contract v4 was approved and implemented locally in the `quality-20261023/integration` worktree. The review follow-up rejects empty/whitespace source observations and adds checkpoint restore plus exact lineage regressions. Python 3.12 backend suite: **522 passed**; focused lineage/checkpoint suite: **57 passed**; frontend typecheck passed; frontend Node tests **5 passed**. Nodeterm synthesis accepted the correctness fix, reported no security finding, and confirmed the test gaps were covered. On 02/11, the 64-file skill archive and host install passed pin verification; the v4 backend image built locally and its pinned-skill verification plus seccomp worker canary passed. Deploy guard tests passed. No commit, push, VM access, migration or deployment was performed. No adjudicated real corpus or engineer signoff is present; the read-only GCP project probe timed out, so the target project/identity are unverified. Those remain open gates.
