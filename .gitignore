@@ -16,5 +16,14 @@ data/*
 !data/.gitkeep
 backups/*
 !backups/.gitkeep
+
+# Local audit runs contain customer drawings and generated reports; never commit them.
+audit_runs/
+
+# Local agent/tooling state and extracted skill bundles.
+.orchestration/
+.commandcode/
+.nodeterm/
+
 .deploy.env
 .deploy/

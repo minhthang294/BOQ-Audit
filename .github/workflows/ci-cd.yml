@@ -25,6 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Guard customer data
+        run: |
+          set -euo pipefail
+          tracked="$(git ls-files 'audit_runs/**' 'data/jobs/**' 'data/database/**' 'backups/**' ':!backups/.gitkeep')"
+          if [[ -n "$tracked" ]]; then
+            echo "::error::Customer data or local backup artifacts are tracked in Git. Remove them from the index." >&2
+            printf '%s\n' "$tracked" >&2
+            exit 1
+          fi
+
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
